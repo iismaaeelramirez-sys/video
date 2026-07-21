@@ -207,6 +207,7 @@ def add_security_headers(response):
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'; "  # <--- LÍNEA AGREGADA PARA PERMITIR SCRIPTS
             "img-src 'self' https://www.google.com https://i.imgur.com https://aadcdn.msftauth.net; "
             "font-src 'self' https://fonts.gstatic.com; "
             "form-action 'self'; "
