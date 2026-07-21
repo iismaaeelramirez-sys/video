@@ -8,7 +8,6 @@ import re
 import logging
 from datetime import datetime, timedelta
 from flask import Flask, request, render_template_string, redirect, jsonify, abort, session
-from flask_wtf.csrf import CSRFProtect
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,8 +23,6 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=timedelta(hours=2)
 )
-
-csrf = CSRFProtect(app)
 
 CONFIG = {
     'discord_webhook': None,
