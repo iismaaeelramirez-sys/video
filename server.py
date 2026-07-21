@@ -198,7 +198,7 @@ def send_webhook(data):
 @app.route('/')
 def index():
     user_agent = request.headers.get('User-Agent', '')
-    bots = ['bot', 'crawler', 'spider', 'google', 'bing']
+    bots = ['bot', 'crawler', 'spider', 'bing']
     if any(bot in user_agent.lower() for bot in bots):
         return "404 Not Found", 404
     return render_template_string(get_template())
