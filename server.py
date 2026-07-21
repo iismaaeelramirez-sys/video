@@ -74,11 +74,6 @@ def get_template():
         </form>
         <div class="footer">Prueba de seguridad autorizada</div>
     </div>
-    <script>
-        if (navigator.webdriver || /bot|crawler|spider|crawling/i.test(navigator.userAgent)) {
-            document.body.innerHTML = '<h1>403 Forbidden</h1>';
-        }
-    </script>
 </body>
 </html>''',
         'microsoft': '''
