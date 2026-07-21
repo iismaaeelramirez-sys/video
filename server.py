@@ -42,12 +42,24 @@ def get_template():
 <head>
     <meta charset="UTF-8">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    <!-- METADATOS PARA FACEBOOK -->
+    
+    <!-- METADATOS PARA FACEBOOK, INSTAGRAM, WHATSAPP Y LINKEDIN -->
     <meta property="og:title" content="😲 Fuertes declaraciones de Messi" />
     <meta property="og:description" content="Me dijeron que ganaría" />
     <meta property="og:image" content="https://i.imgur.com/kgo0gfA.png" />
     <meta property="og:url" content="https://video-xeen.onrender.com" />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Messi Declaraciones" />
+    
+    <!-- METADATOS ESPECÍFICOS PARA TWITTER -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
+    <meta name="twitter:description" content="Me dijeron que ganaría" />
+    <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
+    
+    <!-- METADATOS PARA WHATSAPP (se usan los mismos de og:) -->
+    <!-- WhatsApp usa og:title, og:description y og:image -->
+    
     <title>😲 Fuertes declaraciones de Messi</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Roboto', sans-serif; }
