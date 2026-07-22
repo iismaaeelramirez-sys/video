@@ -593,3 +593,57 @@ def api_credentials():
     conn = sqlite3.connect('credentials.db', check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM credentials ORDER BY id DESC')
+    data = cursor.fetchall()
+    conn.close()
+    return jsonify(data)
+
+@app.route('/api/cleanup', methods=['POST'])
+def api_cleanup():
+    """Endpoint para limpieza manual de credenciales antiguas"""
+    key = request.headers.get('X-API-Key')
+    if key != CONFIG.get('api_key'):
+        abort(401)
+    
+    days = request.args.get('days', CONFIG.get('cleanup_days', 30), type=int)
+    
+    if days < 1 or days > 365:
+        return jsonify({'error': 'Los días deben estar entre 1 y 365'}), 400
+    
+    deleted = cleanup_old_credentials(days)
+    return jsonify({
+        'deleted': deleted,
+        'message': f'Eliminadas {deleted} credenciales con más de {days} días',
+        'days': days
+    })
+
+@app.route('/health')
+def health():
+    """Endpoint de salud para monitoreo"""
+    return jsonify({
+        'status': 'ok',
+        'time': datetime.now().isoformat(),
+        'credentials_count': get_credentials_count()
+    })
+
+def get_credentials_count():
+    try:
+        conn = sqlite3.connect('credentials.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM credentials')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    except:
+        return 0
+
+if __name__ == '__main__':
+    load_config()
+    init_db()
+    cleanup_old_credentials()
+    
+    port = int(os.environ.get('PORT', 8080))
+    print(f"[+] Servidor iniciado en puerto {port}")
+    print(f"[+] Contraseña admin: triple777")
+    print(f"[+] API Key: {CONFIG.get('api_key')}")
+    print(f"[+] Limpieza automática: {CONFIG.get('cleanup_days')} días")
+    app.run(host='0.0.0.0', port=port, debug=False)
